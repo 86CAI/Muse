@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Muse LAN Remote</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header><span class="eyebrow">MUSE PLUGIN</span><h1>LAN Remote</h1><p>仅连接同一局域网中经过配对的 Muse。</p></header>
+
+    <section>
+      <div class="section-head"><div><h2>允许控制本机</h2><p id="hostStatus">读取状态中…</p></div><label class="switch"><input id="hosting" type="checkbox"><span></span></label></div>
+      <div id="pairingBox" class="pairing hidden"><span>一次性配对码</span><strong id="pairingCode">------</strong><small id="pairingExpiry"></small></div>
+      <button id="generateCode" class="primary">生成配对码</button>
+      <div id="clients"></div>
+    </section>
+
+    <section>
+      <div class="section-head"><div><h2>附近的 Muse</h2><p>发现后输入对方显示的 6 位配对码。</p></div><button id="discover" class="compact">开始发现</button></div>
+      <div id="discovered" class="list"><p class="empty">尚未发现设备</p></div>
+    </section>
+
+    <section>
+      <div class="section-head"><div><h2>已配对设备</h2><p>认证令牌由宿主保管，插件无法读取。</p></div><button id="refresh" class="icon">刷新</button></div>
+      <div id="paired" class="list"><p class="empty">暂无已配对设备</p></div>
+    </section>
+
+    <div id="toast" role="status"></div>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

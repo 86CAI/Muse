@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0a0c18">
+  <title>Glass Lab</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <span class="eyebrow">MUSE MATERIALS · LIVE</span>
+        <h1>Glass Lab</h1>
+        <p>实时调校 Liquid Glass 光学参数</p>
+      </div>
+      <button id="reset" class="quiet">重置</button>
+    </header>
+
+    <section class="preview" aria-label="Liquid Glass 实时预览">
+      <div class="scene-grid"></div>
+      <div class="orb orb-one"></div>
+      <div class="orb orb-two"></div>
+      <div class="poster poster-one"><b>01</b><span>NEON<br>NIGHTS</span></div>
+      <div class="poster poster-two"><b>02</b><span>PRISM<br>WAVE</span></div>
+      <div class="glass-card">
+        <div class="refraction-layer red"></div>
+        <div class="refraction-layer blue"></div>
+        <div class="glass-content">
+          <div class="playing-row"><span>NOW PLAYING</span><i></i></div>
+          <strong>Midnight City</strong>
+          <small>M83 · Hurry Up, We're Dreaming</small>
+          <div class="progress"><span></span></div>
+          <div class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+      </div>
+      <div class="preview-labels"><span>BACKGROUND</span><span>OPTICAL LENS</span></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><div><span class="eyebrow">PARAMETERS</span><h2>材质参数</h2></div><span id="status" role="status">正在连接 Muse…</span></div>
+      <section id="controls"></section>
+      <div class="presets" aria-label="预设">
+        <button data-preset="soft"><b>Soft</b><small>柔和磨砂</small></button>
+        <button data-preset="crystal"><b>Crystal</b><small>清透折射</small></button>
+        <button data-preset="bold"><b>Bold</b><small>强烈色散</small></button>
+      </div>
+    </section>
+    <p class="hint">拖动参数会立即更新预览，并同步应用到 Muse 全局 Liquid Glass。</p>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

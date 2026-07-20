@@ -1,0 +1,45 @@
+:root { color-scheme: dark; --accent:#ff426f; --panel:#1c1d22; --line:#303139; --muted:#9b9da8; }
+* { box-sizing:border-box; }
+body { margin:0; background:#101115; color:#f7f7fa; font:15px system-ui,-apple-system,sans-serif; }
+main { max-width:640px; margin:auto; padding:24px 18px 64px; }
+header { padding:10px 4px 6px; }
+.eyebrow { color:var(--accent); font-size:11px; font-weight:800; letter-spacing:.18em; }
+h1 { margin:7px 0 5px; font-size:34px; letter-spacing:-.04em; }
+h2 { margin:0; font-size:18px; }
+p { margin:5px 0; color:var(--muted); line-height:1.45; }
+section { margin-top:18px; padding:18px; background:var(--panel); border:1px solid var(--line); border-radius:20px; box-shadow:0 12px 35px #0003; }
+.section-head { display:flex; align-items:center; justify-content:space-between; gap:14px; }
+button { border:0; border-radius:12px; padding:11px 14px; color:white; background:#343640; font-weight:750; }
+button:active { transform:scale(.98); }
+button.primary { width:100%; margin-top:14px; background:var(--accent); }
+button.compact,button.icon { flex:none; color:#ffdce5; background:#3a2630; }
+button.danger { color:#ff9bad; background:#44242c; }
+button.control { min-width:60px; color:#fff; background:#343640; }
+.switch input { display:none; }.switch span { display:block; width:50px; height:29px; border-radius:20px; background:#3c3e46; padding:3px; transition:.2s; }
+.switch span:after { content:""; display:block; width:23px; height:23px; border-radius:50%; background:white; transition:.2s; }
+.switch input:checked+span { background:var(--accent); }.switch input:checked+span:after { transform:translateX(21px); }
+.pairing { margin-top:15px; padding:16px; border-radius:16px; text-align:center; background:#272832; }
+.pairing span,.pairing small { display:block; color:var(--muted); }.pairing strong { display:block; margin:6px; font-size:34px; letter-spacing:.18em; }
+.hidden { display:none; }.list { margin-top:13px; }.empty { padding:14px 0; text-align:center; }
+.device { padding:14px 0; border-top:1px solid var(--line); }.device:first-child { border-top:0; }.device-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }.device strong { display:block; }.device small { color:var(--muted); }
+.pair-row { display:flex; gap:8px; margin-top:11px; }.pair-row input { min-width:0; flex:1; border:1px solid var(--line); border-radius:12px; padding:11px 12px; background:#121318; color:white; font-size:16px; letter-spacing:.15em; }
+.controls { display:flex; flex-wrap:wrap; gap:7px; margin-top:12px; }
+.now { margin-top:9px; color:#d9dae0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#clients { margin-top:10px; }
+#toast { position:fixed; left:50%; bottom:24px; z-index:5; max-width:90%; transform:translate(-50%,20px); padding:11px 16px; border-radius:12px; background:#f2f2f5; color:#15161a; opacity:0; pointer-events:none; transition:.2s; box-shadow:0 10px 35px #0008; }
+#toast.show { opacity:1; transform:translate(-50%,0); }
+
+.transfer-page main { padding-top:18px; }
+.transfer-page header { padding-bottom:2px; }
+.transfer-section { padding:8px 18px; }
+.transfer-device { width:100%; display:flex; align-items:center; gap:13px; padding:15px 4px; border-radius:0; border-top:1px solid var(--line); background:transparent; text-align:left; }
+.transfer-device:first-child { border-top:0; }
+.transfer-device:disabled { opacity:.72; }
+.device-icon { display:grid; place-items:center; flex:none; width:42px; height:42px; border-radius:14px; background:#3a2630; color:#ffb3c5; font-size:20px; }
+.device-copy { min-width:0; flex:1; }
+.device-copy strong,.device-copy small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.device-copy small { margin-top:4px; color:var(--muted); font-weight:500; }
+.device-arrow { color:var(--muted); font-size:30px; font-weight:400; }
+.transfer-device.transferring .device-icon { animation:pulse 1s infinite alternate; }
+.transfer-device.success .device-icon { background:#193b2b; color:#74e6ac; }
+@keyframes pulse { to { transform:scale(.9); opacity:.6; } }

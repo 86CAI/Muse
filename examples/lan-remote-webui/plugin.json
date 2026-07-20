@@ -1,0 +1,30 @@
+{
+  "apiVersion": 1,
+  "id": "com.caipan.muse.lan-remote",
+  "name": "Muse LAN Remote",
+  "version": "1.0.0",
+  "author": "Muse",
+  "description": "发现、配对并控制同一局域网中的 Muse 设备，也可允许其他 Muse 控制本机。",
+  "entry": "index.js",
+  "hooks": [],
+  "permissions": [
+    "lan.discovery",
+    "lan.pairing",
+    "lan.state",
+    "lan.control",
+    "lan.hosting",
+    "lan.transfer"
+  ],
+  "webUi": {
+    "entry": "web/index.html"
+  },
+  "contributes": {
+    "playerGestures": [
+      {
+        "gesture": "artwork.swipeUp",
+        "action": "openWebUi",
+        "entry": "web/transfer.html"
+      }
+    ]
+  }
+}

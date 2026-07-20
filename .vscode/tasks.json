@@ -1,0 +1,74 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "生成最新版 Debug APK",
+			"type": "shell",
+			"command": "./gradlew.bat :app:assembleDebug --no-daemon --console=plain",
+			"problemMatcher": [
+				"$gradle"
+			],
+			"group": "build"
+		},
+		{
+			"label": "生成正式 Release APK",
+			"type": "shell",
+			"command": ".\\gradlew.bat",
+			"args": [
+				":app:assembleRelease",
+				"--no-daemon",
+				"--console=plain"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$gradle"
+			],
+			"group": "build"
+		},
+		{
+			"label": "诊断 Release R8",
+			"type": "shell",
+			"command": ".\\gradlew.bat",
+			"args": [
+				":app:minifyReleaseWithR8",
+				"--no-daemon",
+				"--console=plain",
+				"--stacktrace",
+				"--info"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$gradle"
+			],
+			"group": "build"
+		},
+		{
+			"label": "全量重建 Release APK",
+			"type": "shell",
+			"command": ".\\gradlew.bat",
+			"args": [
+				":app:assembleRelease",
+				"--rerun-tasks",
+				"--no-daemon",
+				"--console=plain",
+				"--stacktrace"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		},
+		{
+			"label": "1.5GB 内存构建 Release",
+			"type": "shell",
+			"command": ".\\gradlew.bat",
+			"args": [
+				":app:assembleRelease",
+				"--no-daemon",
+				"--console=plain"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}

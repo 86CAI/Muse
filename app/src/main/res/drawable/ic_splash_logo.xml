@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Muse brand mark -->
+    <path
+        android:fillColor="#FA2D48"
+        android:pathData="M24,24 L84,24 Q96,24 96,36 L96,72 Q96,84 84,84 L24,84 Q12,84 12,72 L12,36 Q12,24 24,24 Z" />
+    <!-- Music note -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,34 C58.5,34 62,37.5 62,42 L62,62 L62,66 C62,70.5 58.5,74 54,74 C49.5,74 46,70.5 46,66 C46,61.5 49.5,58 54,58 C55.5,58 57,58.5 58,59 L58,42 C58,40 56.5,38.5 54,38.5 L46,41 L46,37 L54,34 Z" />
+</vector>

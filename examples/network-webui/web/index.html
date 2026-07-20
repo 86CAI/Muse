@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Muse 网络示例</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <p class="tag">MUSE WEBUI</p>
+    <h1>受控网络代理</h1>
+    <p>WebView 本身无法联网。按钮会经宿主代理访问清单中获准的 <strong>api.github.com</strong>。</p>
+    <section>
+      <h2>本机播放控制</h2>
+      <div class="actions"><button data-call="player.previous">上一首</button><button data-call="player.play">播放</button><button data-call="player.pause">暂停</button><button data-call="player.next">下一首</button></div>
+      <button id="state">刷新播放状态</button>
+    </section>
+    <section>
+      <h2>Muse 美化</h2>
+      <label>强调色 <input id="accent" type="color" value="#6ee7b7"></label>
+      <label><input id="light" type="checkbox"> 浅色模式</label>
+      <button id="applyTheme">应用到 Muse</button><button id="resetTheme">重置强调色</button>
+    </section>
+    <section>
+      <h2>插件配置</h2>
+      <label><input id="compact" type="checkbox"> 紧凑显示</label>
+      <button id="saveConfig">保存配置</button>
+    </section>
+    <section><h2>受控网络</h2><button id="load">读取 OkHttp 项目信息</button></section>
+    <pre id="result">等待请求</pre>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

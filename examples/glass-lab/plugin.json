@@ -1,0 +1,12 @@
+{
+  "apiVersion": 1,
+  "id": "com.caipan.muse.glass-lab",
+  "name": "Glass Lab",
+  "version": "1.0.0",
+  "author": "Muse",
+  "description": "实时调校 Muse Liquid Glass 材质参数。",
+  "entry": "index.js",
+  "hooks": [],
+  "permissions": ["glass.read", "glass.write"],
+  "webUi": { "entry": "web/index.html" }
+}

@@ -1,0 +1,12 @@
+{
+  "apiVersion": 1,
+  "id": "com.example.muse.reverse-shuffle",
+  "name": "反转随机队列",
+  "version": "1.0.0",
+  "author": "Muse Example",
+  "description": "用于验证外部 JavaScript Hook：开启随机播放时，将当前队列反向排列。",
+  "entry": "index.js",
+  "hooks": [
+    "onShuffle"
+  ]
+}

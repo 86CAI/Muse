@@ -1,0 +1,31 @@
+# Gradle and Android build output
+.gradle/
+**/build/
+.kotlin/
+
+# Local machine configuration and signing material
+local.properties
+*.jks
+*.keystore
+
+# IDE metadata
+.idea/
+*.iml
+
+# Generated diagnostics, logs, crash dumps, and screenshots
+*.log
+hs_err_pid*.log
+replay_pid*.log
+*.png
+build*.txt
+gradle_*.txt
+
+# Local UI/reference backups
+.reference-ui/
+.ui-backup-*/
+
+# Local tooling and presentation artifacts
+node_modules/
+*.pptx
+make_muse_ppt*.js
+muse-ui.xml
