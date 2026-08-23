@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import com.caipan.music.skin.MuseSkin
 
 private val MuseRed = Color(0xFFFA2D55)
 
@@ -73,13 +74,16 @@ private val LightColorScheme = lightColorScheme(
 )
 
 private val MuseTypography = Typography(
-    displaySmall = TextStyle(fontSize = 34.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp),
-    headlineLarge = TextStyle(fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold),
-    headlineMedium = TextStyle(fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold),
-    titleLarge = TextStyle(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold),
-    titleMedium = TextStyle(fontSize = 17.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold),
-    titleSmall = TextStyle(fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
-    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 23.sp, fontWeight = FontWeight.Normal),
+    displayLarge = TextStyle(fontSize = 40.sp, lineHeight = 46.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp),
+    displayMedium = TextStyle(fontSize = 34.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp),
+    displaySmall = TextStyle(fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold),
+    headlineLarge = TextStyle(fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold),
+    headlineMedium = TextStyle(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold),
+    headlineSmall = TextStyle(fontSize = 17.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold),
+    titleLarge = TextStyle(fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
+    titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium),
+    titleSmall = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
+    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal),
     bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal),
     bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 17.sp, fontWeight = FontWeight.Normal),
     labelLarge = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
@@ -88,11 +92,11 @@ private val MuseTypography = Typography(
 )
 
 private val MuseShapes = Shapes(
-    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-    small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-    medium = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-    large = androidx.compose.foundation.shape.RoundedCornerShape(22.dp),
-    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(30.dp)
+    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(MuseDesign.RadiusCompact),
+    small = androidx.compose.foundation.shape.RoundedCornerShape(MuseDesign.RadiusStandard),
+    medium = androidx.compose.foundation.shape.RoundedCornerShape(MuseDesign.RadiusCard),
+    large = androidx.compose.foundation.shape.RoundedCornerShape(MuseDesign.RadiusFloating),
+    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(32.dp)
 )
 
 @Composable
@@ -100,6 +104,7 @@ fun MusicPlayerTheme(
     darkTheme: Boolean = true,
     dynamicColor: Boolean = false,
     primaryColor: Color? = null,
+    skin: MuseSkin? = null,
     content: @Composable () -> Unit
 ) {
     val base = when {
@@ -110,9 +115,39 @@ fun MusicPlayerTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
-    val accent = primaryColor ?: base.primary
+    // 皮肤覆盖颜色（浅色模式优先用 colorsLight，缺省回退 colors）
+    val skinColors = skin?.let { if (darkTheme) it.colors else (it.colorsLight ?: it.colors) }
+    val accent = primaryColor ?: skinColors?.primary ?: base.primary
     val onAccent = if (accent.luminance() > 0.52f) Color(0xFF111113) else Color.White
-    val colorScheme = base.copy(primary = accent, onPrimary = onAccent)
+    // 纯莫奈（无皮肤、无自定义强调色）时完整采用系统动态 tonal palette，不做任何覆盖
+    val colorScheme = if (primaryColor == null && skinColors == null) {
+        base
+    } else {
+        base.copy(
+            primary = accent,
+            onPrimary = skinColors?.onPrimary ?: onAccent,
+            primaryContainer = skinColors?.primaryContainer ?: base.primaryContainer,
+            secondary = skinColors?.secondary ?: base.secondary,
+            background = skinColors?.background ?: base.background,
+            surface = skinColors?.surface ?: base.surface,
+            surfaceVariant = skinColors?.surfaceVariant ?: base.surfaceVariant,
+            onBackground = skinColors?.onBackground ?: base.onBackground,
+            onSurface = skinColors?.onSurface ?: base.onSurface,
+            onSurfaceVariant = skinColors?.onSurfaceVariant ?: base.onSurfaceVariant,
+            error = skinColors?.error ?: base.error,
+            outline = skinColors?.outline ?: base.outline,
+            scrim = skinColors?.scrim ?: base.scrim
+        )
+    }
+
+    // 皮肤覆盖圆角
+    val shapes = if (skin == null) MuseShapes else Shapes(
+        extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(skin.radii.compact ?: MuseDesign.RadiusCompact),
+        small = androidx.compose.foundation.shape.RoundedCornerShape(skin.radii.standard ?: MuseDesign.RadiusStandard),
+        medium = androidx.compose.foundation.shape.RoundedCornerShape(skin.radii.card ?: MuseDesign.RadiusCard),
+        large = androidx.compose.foundation.shape.RoundedCornerShape(skin.radii.floating ?: MuseDesign.RadiusFloating),
+        extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(32.dp)
+    )
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -130,7 +165,7 @@ fun MusicPlayerTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = MuseTypography,
-        shapes = MuseShapes,
+        shapes = shapes,
         content = content
     )
 }
