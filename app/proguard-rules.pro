@@ -14,6 +14,19 @@
     @android.webkit.JavascriptInterface <methods>;
 }
 
+# Javet - Keep all classes, methods, and fields required for JNI/reflection
+-keep class com.caoccao.javet.** { *; }
+-keep interface com.caoccao.javet.** { *; }
+-keepclassmembers class com.caoccao.javet.** { *; }
+-keep @interface com.caoccao.javet.annotations.**
+-keepclassmembers class * {
+    @com.caoccao.javet.annotations.** <methods>;
+    @com.caoccao.javet.annotations.** <fields>;
+}
+
+# Keep LxSourceHost host callbacks (invoked by Javet via reflection)
+-keep class com.caipan.music.online.LxSourceHost$* { *; }
+
 # androidx.webkit (WebViewAssetLoader, WebMessageListener)
 -keep class androidx.webkit.** { *; }
 -dontwarn androidx.webkit.**
@@ -28,3 +41,6 @@
 # Keep muse glass config (accessed via ViewModel)
 -keep class com.caipan.music.ui.components.MuseGlassConfig { *; }
 -keep class com.caipan.music.ui.components.MuseGlassConfigStore { *; }
+
+# Tink（EncryptedSharedPreferences 依赖）引用的 errorprone 编译期注解，R8 全量模式下缺失，运行不需要
+-dontwarn com.google.errorprone.annotations.**
