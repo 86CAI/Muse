@@ -7,6 +7,8 @@
 local.properties
 *.jks
 *.keystore
+*.cer
+keystore/
 
 # IDE metadata
 .idea/
@@ -20,12 +22,42 @@ replay_pid*.log
 build*.txt
 gradle_*.txt
 
+# Editor/agent scratch backups
+*.bak
+*.bak-*
+
 # Local UI/reference backups
 .reference-ui/
 .ui-backup-*/
 
-# Local tooling and presentation artifacts
+# Third-party projects kept locally for study only. Not part of Muse's source;
+# see THIRD_PARTY_NOTICES.md for what was actually ported and under which license.
+.reference/
+melox-android/
+mineradio/
+y2k-player/
+raintest/
+muse-site/
+muse-apple-redesign/
+muse-playlist.design/
+c/
+
+# User-supplied LX audio-source scripts. These carry no license and must never
+# be redistributed or bundled; see docs/ONLINE_AUDIO_SOURCE_PLAN.md.
+sources/
+
+# Apple SF Pro is proprietary: Apple's font license forbids redistributing it or
+# embedding it in software products. Supply your own res/font/sf_pro.ttf locally,
+# or swap MeloXGlassTokens.kt to a freely redistributable family.
+# See THIRD_PARTY_NOTICES.md section 2.
+app/src/main/res/font/sf_pro.ttf
+
+# Local tooling, agent caches, and presentation artifacts
 node_modules/
 *.pptx
 make_muse_ppt*.js
 muse-ui.xml
+.reasonix/
+reasonix.toml
+restart-dsh*.ps1
+restart-dsh*.err
