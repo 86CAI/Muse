@@ -1,5 +1,6 @@
 // UI structure adapted from Symphony SongCard.kt (AGPL-3.0-only).
 // Source: https://github.com/zyrouge/symphony @ dd04b872b8b4e6dd56172c053a5776c4d56ad080
+// License text: licenses/AGPL-3.0.txt - full attribution list: THIRD_PARTY_NOTICES.md
 package com.caipan.music.ui.components
 
 import android.net.Uri
@@ -22,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -29,8 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
-import coil.compose.SubcomposeAsyncImage
-import coil.compose.SubcomposeAsyncImageContent
+import com.caipan.music.R
 import com.caipan.music.model.Song
 import com.kyant.backdrop.Backdrop
 
@@ -55,12 +56,18 @@ fun AlbumArtwork(song: Song, modifier: Modifier = Modifier, contentDescription: 
     if (art == null) {
         DefaultRecordArtwork(modifier)
     } else {
-        SubcomposeAsyncImage(model = art, contentDescription = contentDescription, modifier = modifier,
-            contentScale = ContentScale.Crop) {
-            when (painter.state) {
-                is coil.compose.AsyncImagePainter.State.Success -> SubcomposeAsyncImageContent()
-                else -> DefaultRecordArtwork(Modifier.matchParentSize())
-            }
+        Box(modifier) {
+            // 加载中占位，避免首次加载空白
+            DefaultRecordArtwork(Modifier.matchParentSize())
+            // 用 AsyncImage 而非 SubcomposeAsyncImage：此处无 loading/error 分支，
+            // subcomposition 纯属浪费（画廊上百个 tile 时首帧卡顿来源之一）。
+            AsyncImage(
+                model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                    .data(art).size(192).crossfade(true).build(),
+                contentDescription = contentDescription,
+                modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.Crop
+            )
         }
     }
 }
@@ -75,7 +82,7 @@ fun SongListItem(
     onToggleSelect: () -> Unit = {}, onMore: () -> Unit = {}, modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().pressScale(),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
         onClick = if (batchMode) onToggleSelect else onClick
     ) {
@@ -93,7 +100,8 @@ fun SongListItem(
             ) {
                 AlbumArtwork(song, Modifier.matchParentSize())
                 if (isCurrentSong) Box(Modifier.matchParentSize().background(accentColor.copy(alpha = .72f)), contentAlignment = Alignment.Center) {
-                    if (isPlaying) PlayingIndicator(Color.White) else Icon(Icons.Default.MusicNote, null, tint = Color.White)
+                    if (isPlaying) Icon(painterResource(R.drawable.ic_playing), "播放中", tint = Color.White, modifier = Modifier.size(22.dp))
+                    else Icon(painterResource(R.drawable.ic_paused), "已暂停", tint = Color.White, modifier = Modifier.size(22.dp))
                 }
             }
             Spacer(Modifier.width(16.dp))
@@ -102,7 +110,7 @@ fun SongListItem(
                 Text(listOf(song.artist, song.album).filter { it.isNotBlank() }.joinToString(" · "), color = subTextColor, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             Spacer(Modifier.width(8.dp))
-            IconButton(onClick = onMore) { Icon(Icons.Default.MoreVert, "更多", tint = subTextColor) }
+            if (!batchMode) MuseIconButton(onClick = onMore) { Icon(painterResource(R.drawable.ic_apple_more), "更多", tint = subTextColor) }
         }
     }
 }
@@ -122,7 +130,9 @@ fun SongActionsSheet(
         containerColor = Color.Transparent,
         scrimColor = Color.Black.copy(alpha = .18f),
         tonalElevation = 0.dp,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        // 透明容器上手柄需不透明高对比才可见
+        dragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.onSurface) }
     ) {
         val sheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
         Column(
@@ -140,10 +150,10 @@ fun SongActionsSheet(
             }
             HorizontalDivider(Modifier.padding(vertical = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
             val transparentItemColors = ListItemDefaults.colors(containerColor = Color.Transparent)
-            ListItem(headlineContent = { Text("添加到播放列表") }, leadingContent = { Icon(Icons.Default.PlaylistAdd, null) }, colors = transparentItemColors, modifier = Modifier.clickable(onClick = onAddToPlaylist))
-            ListItem(headlineContent = { Text("歌曲详细信息") }, leadingContent = { Icon(Icons.Default.Info, null) }, colors = transparentItemColors, modifier = Modifier.clickable { showDetails = true })
+            ListItem(headlineContent = { Text("添加到播放列表") }, leadingContent = { Icon(painterResource(R.drawable.ic_apple_queue), null) }, colors = transparentItemColors, modifier = Modifier.clickable(onClick = onAddToPlaylist))
+            ListItem(headlineContent = { Text("歌曲详细信息") }, leadingContent = { Icon(painterResource(R.drawable.ic_apple_info), null) }, colors = transparentItemColors, modifier = Modifier.clickable { showDetails = true })
             onRemoveFromPlaylist?.let { remove ->
-                ListItem(headlineContent = { Text("从此歌单移除", color = MaterialTheme.colorScheme.error) }, leadingContent = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }, colors = transparentItemColors, modifier = Modifier.clickable(onClick = remove))
+                ListItem(headlineContent = { Text("从此歌单移除", color = MaterialTheme.colorScheme.error) }, leadingContent = { Icon(painterResource(R.drawable.ic_apple_trash), null, tint = MaterialTheme.colorScheme.error) }, colors = transparentItemColors, modifier = Modifier.clickable(onClick = remove))
             }
         }
     }
@@ -185,7 +195,7 @@ private fun SongDetailsDialog(song: Song, backdrop: Backdrop?, onDismiss: () -> 
                     ))))
                     Surface(
                         onClick = onDismiss,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).size(38.dp),
+                        modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).size(48.dp),
                         shape = androidx.compose.foundation.shape.CircleShape,
                         color = Color.Black.copy(.38f)
                     ) { Box(contentAlignment = Alignment.Center) { Text("×", color = Color.White, fontSize = 25.sp, lineHeight = 25.sp) } }
@@ -237,7 +247,7 @@ private fun SongDetailsDialog(song: Song, backdrop: Backdrop?, onDismiss: () -> 
                     modifier = Modifier.padding(start = 22.dp, top = 22.dp, bottom = 7.dp))
                 Text(song.filePath.ifBlank { song.folderPath }, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp, lineHeight = 17.sp, modifier = Modifier.padding(horizontal = 22.dp))
-                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End).padding(14.dp)) {
+                MuseTextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End).padding(14.dp)) {
                     Text("完成", fontWeight = FontWeight.Bold)
                 }
             }
@@ -273,8 +283,3 @@ private fun DetailLine(label: String, value: String, divider: Boolean = true) {
     if (divider) HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(.08f))
 }
 
-@Composable private fun PlayingIndicator(color: Color) {
-    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom, modifier = Modifier.height(16.dp)) {
-        listOf(9, 15, 11).forEach { Box(Modifier.width(3.dp).height(it.dp).clip(RoundedCornerShape(2.dp)).background(color)) }
-    }
-}

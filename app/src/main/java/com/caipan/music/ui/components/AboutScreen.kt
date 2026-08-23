@@ -1,4 +1,4 @@
-﻿package com.caipan.music.ui.components
+package com.caipan.music.ui.components
 
 import android.content.Intent
 import android.net.Uri
@@ -36,6 +36,9 @@ private class AboutStrings(private val isZh: Boolean) {
     val language get() = if (isZh) "语言" else "Language"
     val subtitle get() = if (isZh) "安卓音乐播放器" else "Android Music Player"
     val slogan get() = if (isZh) "🎵 用音乐点亮生活" else "🎵 Music lights up life"
+    val openSource get() = if (isZh) "开源" else "Open source"
+    val licenses get() = if (isZh) "开源许可" else "Open-source licenses"
+    val licensesHint get() = if (isZh) "来源、许可证与全文" else "Sources, licenses and full texts"
 }
 
 @Composable
@@ -47,6 +50,17 @@ fun AboutScreen(
     isLightTheme: Boolean = false,
     backdrop: Backdrop? = null
 ) {
+    var showLicenses by remember { mutableStateOf(false) }
+    if (showLicenses) {
+        OpenSourceLicensesScreen(
+            onDismiss = { showLicenses = false },
+            currentLanguage = currentLanguage,
+            accentColor = accentColor,
+            isLightTheme = isLightTheme,
+            backdrop = backdrop,
+        )
+        return
+    }
     val s = remember(currentLanguage) { AboutStrings(currentLanguage == "zh") }
     val textPrimary = MaterialTheme.colorScheme.onBackground
     val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
@@ -65,8 +79,8 @@ fun AboutScreen(
         Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.ArrowBack, if (currentLanguage == "zh") "返回" else "Back", tint = textPrimary, modifier = Modifier.size(24.dp))
+                MuseIconButton(onClick = onDismiss) {
+                    Icon(painterResource(R.drawable.ic_apple_arrow_left), if (currentLanguage == "zh") "返回" else "Back", tint = textPrimary, modifier = Modifier.size(24.dp))
                 }
                 Text(s.about, color = textPrimary, style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(start = 8.dp))
@@ -134,6 +148,51 @@ fun AboutScreen(
 
             Spacer(Modifier.height(24.dp))
 
+            // Open source attribution
+            Text(s.openSource, color = accentColor,
+                fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+            Card(Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+                .museGlass(backdrop, RoundedCornerShape(16.dp), MaterialTheme.colorScheme.surface.copy(alpha = .4f),
+                    location = BlurLocation.CARDS, readabilityBoost = true),
+                colors = CardDefaults.cardColors(containerColor = cardColor),
+                shape = RoundedCornerShape(16.dp)) {
+                Column {
+                    Row(
+                        Modifier.fillMaxWidth().clickable { showLicenses = true }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(accentColor.copy(alpha = .14f)),
+                            contentAlignment = Alignment.Center) {
+                            Icon(painterResource(R.drawable.ic_apple_file_text), null, tint = accentColor,
+                                modifier = Modifier.size(22.dp))
+                        }
+                        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                            Text(s.licenses, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text(s.licensesHint, color = textSecondary, fontSize = 12.sp,
+                                modifier = Modifier.padding(top = 2.dp))
+                        }
+                        Icon(painterResource(R.drawable.ic_apple_chevron_right), null, tint = textSecondary,
+                            modifier = Modifier.size(18.dp))
+                    }
+                    HorizontalDivider(color = textSecondary.copy(alpha = .1f), modifier = Modifier.padding(start = 68.dp))
+                    Text(
+                        if (currentLanguage == "zh")
+                            "Muse 的界面移植自 Mei_MeloX_Android (GPL-3.0)、Symphony (AGPL-3.0) 与 " +
+                                "AndroidLiquidGlass (Apache-2.0) 等开源项目。分发本应用时须一并提供对应源代码。"
+                        else
+                            "Muse's UI is ported from Mei_MeloX_Android (GPL-3.0), Symphony (AGPL-3.0), " +
+                                "AndroidLiquidGlass (Apache-2.0) and others. Distributing this app requires " +
+                                "providing the corresponding source code.",
+                        color = textSecondary, fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
             // Language
             Card(Modifier.fillMaxWidth().padding(horizontal = 20.dp)
                 .museGlass(backdrop, MaterialTheme.shapes.large, MaterialTheme.colorScheme.surface.copy(alpha = .4f),
@@ -165,14 +224,14 @@ private fun ContributorRow(name: String, role: String, accent: Color, onClick: (
     ) {
         Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(accent.copy(alpha = .14f)),
             contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.Person, null, tint = accent, modifier = Modifier.size(22.dp))
+            Icon(painterResource(R.drawable.ic_apple_user), null, tint = accent, modifier = Modifier.size(22.dp))
         }
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             Text(role, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp,
                 modifier = Modifier.padding(top = 2.dp))
         }
-        Icon(Icons.Default.OpenInNew, "在酷安打开", tint = accent, modifier = Modifier.size(19.dp))
+        Icon(painterResource(R.drawable.ic_apple_external_link), "在酷安打开", tint = accent, modifier = Modifier.size(19.dp))
     }
 }
 
@@ -188,9 +247,6 @@ private fun InfoRow(label: String, value: String, primary: Color, secondary: Col
 @Composable
 private fun LangChip(label: String, code: String, current: String, onSelect: (String) -> Unit, accent: Color) {
     val sel = current == code
-    FilterChip(selected = sel, onClick = { if (!sel) onSelect(code) },
-        label = { Text(label, fontSize = 14.sp) },
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = accent.copy(alpha = 0.2f),
-            selectedLabelColor = accent))
+    MuseFilterChip(selected = sel, onClick = { if (!sel) onSelect(code) },
+        label = { Text(label, color = if (sel) accent else MaterialTheme.colorScheme.onSurface, fontSize = 14.sp) })
 }
