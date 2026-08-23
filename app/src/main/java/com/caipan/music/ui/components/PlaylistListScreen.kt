@@ -1,5 +1,8 @@
 package com.caipan.music.ui.components
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -16,15 +19,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.caipan.music.R
 import com.caipan.music.data.Playlist
-import com.caipan.music.plugin.BlurLocation
+import com.caipan.music.ui.theme.MuseDesign
 import com.kyant.backdrop.Backdrop
+import kotlinx.coroutines.delay
 
 private val coverGradients = listOf(
     listOf(Color(0xFFFA2D48), Color(0xFFFF765F)),
@@ -41,9 +50,9 @@ fun PlaylistListScreen(
     playlists: List<Playlist>,
     accentColor: Color = Color(0xFFFA2D48),
     isLightTheme: Boolean = false,
-    onPlaylistTap: (Playlist) -> Unit,
+    onPlaylistTap: (Playlist, androidx.compose.ui.geometry.Rect) -> Unit,
     onDeletePlaylist: (String) -> Unit,
-    onWebdavImport: () -> Unit,
+    onWebdavImport: (androidx.compose.ui.geometry.Rect?) -> Unit,
     onDismiss: () -> Unit,
     backdrop: Backdrop? = null
 ) {
@@ -52,22 +61,24 @@ fun PlaylistListScreen(
     val cardBg = MaterialTheme.colorScheme.surfaceContainerHigh
 
     var pendingDelete by remember { mutableStateOf<Playlist?>(null) }
+    var webdavButtonBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
 
     FullScreenGlassRoute(backdrop = backdrop, isLightTheme = isLightTheme) {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             // ── Top bar ──
             Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 12.dp, top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.ArrowBack, "返回", tint = textPrimary, modifier = Modifier.size(24.dp))
+                MuseIconButton(onClick = onDismiss) {
+                    Icon(painterResource(R.drawable.ic_apple_arrow_left), "返回", tint = textPrimary, modifier = Modifier.size(24.dp))
                 }
                 Spacer(Modifier.weight(1f))
                 // WebDAV import pill button
-                Surface(onClick = onWebdavImport, shape = CircleShape,
+                Surface(onClick = { onWebdavImport(webdavButtonBounds) }, shape = CircleShape,
+                    modifier = Modifier.onGloballyPositioned { webdavButtonBounds = it.boundsInRoot() },
                     color = accentColor.copy(alpha = 0.15f)) {
                     Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CloudDownload, null, tint = accentColor, modifier = Modifier.size(18.dp))
+                        Icon(painterResource(R.drawable.ic_apple_cloud), null, tint = accentColor, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("导入", color = accentColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     }
@@ -86,7 +97,7 @@ fun PlaylistListScreen(
                         modifier = Modifier.padding(bottom = 80.dp)) {
                         Box(Modifier.size(96.dp).clip(CircleShape).background(cardBg),
                             contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.QueueMusic, null, tint = textSecondary,
+                            Icon(painterResource(R.drawable.ic_apple_queue), null, tint = textSecondary,
                                 modifier = Modifier.size(46.dp))
                         }
                         Spacer(Modifier.height(20.dp))
@@ -99,30 +110,46 @@ fun PlaylistListScreen(
                     }
                 }
             } else {
+                val animatedIds = remember { mutableSetOf<String>() }
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
-                    itemsWithIndex(playlists) { index, pl ->
+                    // 记录已播放过入场动画的项，避免滚动回收后重复播放
+                    itemsWithIndex(playlists, key = { it.id }) { index, pl ->
                         val grad = coverGradients[index % coverGradients.size]
+                        var itemBounds by remember(pl.id) { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
+                        // 交错入场动画：仅首次出现时播放
+                        val enterProgress = remember(pl.id) { Animatable(if (pl.id in animatedIds) 1f else 0f) }
+                        LaunchedEffect(pl.id) {
+                            if (pl.id !in animatedIds) {
+                                animatedIds.add(pl.id)
+                                delay((index * 45L).coerceAtMost(450L))
+                                enterProgress.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioNoBouncy))
+                            }
+                        }
                         Row(
                             Modifier.fillMaxWidth()
-                                .museGlass(
-                                    backdrop, RoundedCornerShape(16.dp),
-                                    MaterialTheme.colorScheme.surface.copy(alpha = .28f),
-                                    location = BlurLocation.CARDS
-                                )
-                                .clip(RoundedCornerShape(16.dp))
-                                .clickable { onPlaylistTap(pl) }
-                                .padding(vertical = 8.dp, horizontal = 8.dp),
+                                .pressScale()
+                                .graphicsLayer {
+                                    alpha = enterProgress.value
+                                    translationY = (1f - enterProgress.value) * 28.dp.toPx()
+                                }
+                                .onGloballyPositioned { itemBounds = it.boundsInRoot() }
+                                .clickable { onPlaylistTap(pl, itemBounds) }
+                                .padding(vertical = 6.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Gradient cover or custom image
-                            Box(Modifier.size(64.dp).clip(RoundedCornerShape(16.dp))
+                            // 行式封面（MeloX 风格：小封面 + 收窄圆角）
+                            Box(Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))
                                 .background(Brush.linearGradient(grad)),
                                 contentAlignment = Alignment.Center) {
                                 if (pl.coverUri != null) {
-                                    AsyncImage(model = pl.coverUri, contentDescription = null,
-                                        modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+                                    AsyncImage(
+                                        model = coil.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                                            .data(pl.coverUri).size(128).crossfade(true).build(),
+                                        contentDescription = null,
+                                        modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop
+                                    )
                                 } else {
-                                    Icon(Icons.Default.MusicNote, null, tint = Color.White,
+                                    Icon(painterResource(R.drawable.ic_apple_music), null, tint = Color.White,
                                         modifier = Modifier.size(26.dp))
                                 }
                             }
@@ -134,8 +161,8 @@ fun PlaylistListScreen(
                                 Spacer(Modifier.height(3.dp))
                                 Text(pl.songIds.size.toString() + " 首歌曲", color = textSecondary, fontSize = 13.sp)
                             }
-                            IconButton(onClick = { pendingDelete = pl }) {
-                                Icon(Icons.Default.Delete, "删除歌单",
+                            MuseIconButton(onClick = { pendingDelete = pl }) {
+                                Icon(painterResource(R.drawable.ic_apple_trash), "删除歌单",
                                     tint = textSecondary, modifier = Modifier.size(20.dp))
                             }
                         }
@@ -152,17 +179,17 @@ fun PlaylistListScreen(
     }
 
     pendingDelete?.let { playlist ->
-        AlertDialog(
+        MuseAlertDialog(
             onDismissRequest = { pendingDelete = null },
-            icon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
+            icon = { Icon(painterResource(R.drawable.ic_apple_trash), null, tint = MaterialTheme.colorScheme.error) },
             title = { Text("删除歌单？") },
             text = { Text("“${playlist.name}”将被删除，歌曲文件不会受到影响。") },
             confirmButton = {
-                TextButton(onClick = { onDeletePlaylist(playlist.id); pendingDelete = null }) {
+                MuseTextButton(onClick = { onDeletePlaylist(playlist.id); pendingDelete = null }) {
                     Text("删除", color = MaterialTheme.colorScheme.error)
                 }
             },
-            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("取消") } },
+            dismissButton = { MuseTextButton(onClick = { pendingDelete = null }) { Text("取消") } },
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             shape = MaterialTheme.shapes.extraLarge
         )
@@ -171,7 +198,11 @@ fun PlaylistListScreen(
 
 private inline fun <T> androidx.compose.foundation.lazy.LazyListScope.itemsWithIndex(
     items: List<T>,
+    crossinline key: (T) -> Any,
     crossinline itemContent: @androidx.compose.runtime.Composable (index: Int, item: T) -> Unit
 ) {
-    items(items.size) { index -> itemContent(index, items[index]) }
+    items(
+        count = items.size,
+        key = { index -> key(items[index]) }
+    ) { index -> itemContent(index, items[index]) }
 }

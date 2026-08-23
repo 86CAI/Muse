@@ -8,16 +8,19 @@ import kotlinx.coroutines.withContext
 
 class MusicRepository(private val context: Context) {
 
+    /** 曲库过滤条件：时长 > 30s 且排除各类录音目录。 */
+    private val librarySelection = """
+        duration > 30000 AND _data NOT LIKE '%/Recordings/%'
+        AND _data NOT LIKE '%/录音/%'
+        AND _data NOT LIKE '%/Voice Recorder/%'
+        AND _data NOT LIKE '%/WhatsApp Voice Notes/%'
+        AND _data NOT LIKE '%/recording/%'
+    """.trimIndent().replace('\n', ' ')
+
     suspend fun loadAllSongs(): List<Song> = withContext(Dispatchers.IO) {
         val songs = mutableListOf<Song>()
         val uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-        val selection = """
-            duration > 30000 AND _data NOT LIKE '%/Recordings/%'
-            AND _data NOT LIKE '%/录音/%'
-            AND _data NOT LIKE '%/Voice Recorder/%'
-            AND _data NOT LIKE '%/WhatsApp Voice Notes/%'
-            AND _data NOT LIKE '%/recording/%'
-        """.trimIndent().replace('\n', ' ')
+        val selection = librarySelection
 
         val projection = arrayOf(
             MediaStore.Audio.Media._ID,
@@ -72,6 +75,22 @@ class MusicRepository(private val context: Context) {
             }
         }
         songs
+    }
+
+    /** 曲库歌曲数量（与 [loadAllSongs] 使用相同过滤条件）。 */
+    suspend fun countSongs(): Int = withContext(Dispatchers.IO) {
+        runCatching {
+            // targetSdk 36 起 MediaProvider 会拒绝聚合投影（如 "count(*)"），
+            // 改为只查 _ID 列再取 cursor.count，投影合法且开销远低于全量加载。
+            context.contentResolver.query(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Audio.Media._ID),
+                librarySelection, null, null
+            )?.use { cursor -> cursor.count } ?: 0
+        }.getOrElse {
+            // MediaStore 列校验或查询失败时，回退到全量加载计数，避免统计端点整体崩溃。
+            runCatching { loadAllSongs().size }.getOrDefault(0)
+        }
     }
 
     suspend fun getSongsByIds(ids: List<Long>): List<Song> = withContext(Dispatchers.IO) {

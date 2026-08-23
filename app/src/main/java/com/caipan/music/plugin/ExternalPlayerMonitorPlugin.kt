@@ -35,7 +35,7 @@ class ExternalPlayerMonitorPlugin(context: Context) : MusePlugin {
     override val author = "Muse"
     override val description = "监听系统其他音乐播放器，在 Muse 界面实时显示和控制"
     override val hooks = emptyList<String>()
-    override val enabledByDefault = false
+    override val enabledByDefault = true
 
     private val appContext = context.applicationContext
     private val artCacheDir = File(appContext.cacheDir, "external_art").also { it.mkdirs() }
@@ -51,7 +51,7 @@ class ExternalPlayerMonitorPlugin(context: Context) : MusePlugin {
     private val progressTicker = object : Runnable {
         override fun run() {
             if (listener != null) {
-                refreshState()
+                if (controllers.isEmpty()) runCatching { rescan() } else refreshState()
                 mainHandler.postDelayed(this, 500L)
             }
         }
@@ -87,8 +87,8 @@ class ExternalPlayerMonitorPlugin(context: Context) : MusePlugin {
             refreshState()
         }
         val component = ComponentName(appContext, ExternalPlayerNotificationListenerService::class.java)
-        mgr.addOnActiveSessionsChangedListener(listener!!, component)
-        rescan()
+        runCatching { mgr.addOnActiveSessionsChangedListener(listener!!, component) }
+        runCatching { rescan() }
         mainHandler.removeCallbacks(progressTicker)
         mainHandler.post(progressTicker)
     }
@@ -109,7 +109,13 @@ class ExternalPlayerMonitorPlugin(context: Context) : MusePlugin {
         val mgr = appContext.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
         controllers.forEach { it.unregisterCallback(callback) }; controllers.clear()
         val component = ComponentName(appContext, ExternalPlayerNotificationListenerService::class.java)
-        mgr.getActiveSessions(component).orEmpty().forEach { ctrl ->
+        val sessions = try {
+            mgr.getActiveSessions(component).orEmpty()
+        } catch (_: SecurityException) {
+            _state.value = null
+            return
+        }
+        sessions.forEach { ctrl ->
             if (ctrl.packageName != appContext.packageName) {
                 ctrl.registerCallback(callback); controllers.add(ctrl)
             }
@@ -120,7 +126,16 @@ class ExternalPlayerMonitorPlugin(context: Context) : MusePlugin {
     private val artRetry = Runnable { refreshState(forceArt = true) }
 
     private fun refreshState(forceArt: Boolean = false) {
-        val ctrl = controllers.firstOrNull { it.packageName != appContext.packageName }
+        val ctrl = controllers
+            .filter { it.packageName != appContext.packageName && it.metadata != null }
+            .maxByOrNull { controller ->
+                when (controller.playbackState?.state) {
+                    PlaybackState.STATE_PLAYING -> 3
+                    PlaybackState.STATE_BUFFERING, PlaybackState.STATE_CONNECTING -> 2
+                    PlaybackState.STATE_PAUSED -> 1
+                    else -> 0
+                }
+            }
             ?: run { _state.value = null; return }
         val meta = ctrl.metadata ?: run { _state.value = null; return }
         val pb = ctrl.playbackState
@@ -132,7 +147,10 @@ class ExternalPlayerMonitorPlugin(context: Context) : MusePlugin {
             meta.getLong(MediaMetadata.METADATA_KEY_DURATION).toString()
         ).joinToString("|")
         val signatureChanged = artSignature != lastArtSignature
-        if (signatureChanged || forceArt || lastCachedArtPath == null) {
+        // 同一次元数据变化可能同时触发延迟回调与 artRetry。只允许仍处于 pending 的
+        // 强制刷新写入封面，避免同一张 bitmap 连续生成两个新路径，导致 Coil 重载闪屏。
+        val pendingForcedRefresh = forceArt && pendingArtSignature == artSignature
+        if (signatureChanged || pendingForcedRefresh || lastCachedArtPath == null) {
             if (signatureChanged && !forceArt && lastArtSignature != null) {
                 // 先等播放器完成元数据与封面切换，避免读取到上一首的 bitmap。
                 if (pendingArtSignature != artSignature) {
@@ -175,7 +193,7 @@ class ExternalPlayerMonitorPlugin(context: Context) : MusePlugin {
 
         val durationMs = meta.getLong(MediaMetadata.METADATA_KEY_DURATION).coerceAtLeast(0L)
         val isPlaying = pb?.state == PlaybackState.STATE_PLAYING
-        val rawProgress = if (isPlaying && pb != null) {
+        val rawProgress = if (isPlaying) {
             val elapsed = (SystemClock.elapsedRealtime() - pb.lastPositionUpdateTime).coerceAtLeast(0L)
             pb.position + elapsed
         } else {
@@ -198,7 +216,9 @@ class ExternalPlayerMonitorPlugin(context: Context) : MusePlugin {
         return file.absolutePath
     }
 
-    private fun activeController() = controllers.firstOrNull { it.packageName != appContext.packageName }
+    private fun activeController() = controllers
+        .filter { it.packageName != appContext.packageName }
+        .maxByOrNull { if (it.playbackState?.state == PlaybackState.STATE_PLAYING) 1 else 0 }
 
     /** Muse 开始本地播放时调用，避免本地与外部播放器同时出声。 */
     fun pauseExternalPlayback() {

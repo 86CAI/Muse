@@ -23,7 +23,8 @@ class MuseBackupManager(context: Context) {
                 zip.closeEntry()
 
                 if (prefsDir.isDirectory) prefsDir.listFiles().orEmpty()
-                    .filter { it.isFile && it.extension == "xml" }
+                    // Session cookies are device credentials, never include them in a portable backup.
+                    .filter { it.isFile && it.extension == "xml" && it.name != "muse_netease_session.xml" }
                     .forEach { addFile(zip, it, "shared_prefs/${it.name}") }
 
                 // filesDir 下的所有持久文件都纳入，避免新增模块或未来功能漏进备份；cacheDir 不属于持久数据。
@@ -61,8 +62,8 @@ class MuseBackupManager(context: Context) {
             val manifest = JSONObject(File(staging, "manifest.json").readText(Charsets.UTF_8))
             require(manifest.optString("format") == "muse-backup") { "不是有效的 Muse 备份" }
             val oldRoot = manifest.optString("filesDir").takeIf { it.isNotBlank() }
-            File(staging, "shared_prefs").takeIf { it.isDirectory }?.listFiles().orEmpty()
-                .filter { it.extension == "xml" }
+                File(staging, "shared_prefs").takeIf { it.isDirectory }?.listFiles().orEmpty()
+                .filter { it.extension == "xml" && it.name != "muse_netease_session.xml" }
                 .forEach { source ->
                     val text = source.readText(Charsets.UTF_8).let { xml ->
                         if (oldRoot != null) xml.replace(oldRoot, filesDir.absolutePath) else xml

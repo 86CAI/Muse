@@ -5,8 +5,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -21,6 +23,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import com.caipan.music.R
 import com.caipan.music.data.WebdavConfig
 import com.caipan.music.data.WebdavItem
 import kotlinx.coroutines.launch
@@ -59,8 +63,8 @@ fun WebdavImportScreen(
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.ArrowBack, "返回", tint = textPrimary.copy(alpha = 0.8f), modifier = Modifier.size(24.dp))
+                MuseIconButton(onClick = onDismiss) {
+                    Icon(painterResource(R.drawable.ic_apple_arrow_left), "返回", tint = textPrimary.copy(alpha = 0.8f), modifier = Modifier.size(24.dp))
                 }
                 Spacer(Modifier.weight(1f))
             }
@@ -68,7 +72,7 @@ fun WebdavImportScreen(
             Text(if (phase == 0) "连接你的远程音乐资料库" else "选择要导入的音乐", color = textSecondary, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
 
             if (phase == 0) {
-                Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 20.dp)) {
+                Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 20.dp)) {
                     MuseGlassBox(Modifier.fillMaxWidth(), backdrop, RoundedCornerShape(16.dp), cardBg) {
                         Column(Modifier.padding(20.dp)) {
                             Text("WebDAV 连接配置", color = textPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -97,10 +101,10 @@ fun WebdavImportScreen(
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                                 shape = RoundedCornerShape(12.dp))
                             Spacer(Modifier.height(20.dp))
-                            Button(onClick = {
+                            MuseButton(onClick = {
                                 if (configUrl.isBlank()) {
                                     errorMsg = "请输入 WebDAV 服务器地址"
-                                    return@Button
+                                    return@MuseButton
                                 }
                                 isLoading = true; errorMsg = null
                                 scope.launch {
@@ -131,8 +135,8 @@ fun WebdavImportScreen(
             } else {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = {
-                        if (currentPath.isEmpty()) return@TextButton
+                    MuseTextButton(onClick = {
+                        if (currentPath.isEmpty()) return@MuseTextButton
                         val parent = currentPath.substringBeforeLast('/').ifEmpty { "" }
                         isLoading = true
                         scope.launch {
@@ -142,13 +146,13 @@ fun WebdavImportScreen(
                             r.onFailure { errorMsg = it.message }
                         }
                     }, enabled = currentPath.isNotEmpty()) {
-                        Icon(Icons.Default.ArrowBack, null, tint = if (currentPath.isNotEmpty()) accentColor else textSecondary,
+                        Icon(painterResource(R.drawable.ic_apple_arrow_left), null, tint = if (currentPath.isNotEmpty()) accentColor else textSecondary,
                             modifier = Modifier.size(16.dp))
                     }
                     Text(if (currentPath.isEmpty()) "/" else currentPath,
                         color = textSecondary, fontSize = 14.sp, modifier = Modifier.weight(1f),
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    TextButton(onClick = {
+                    MuseTextButton(onClick = {
                         isLoading = true
                         scope.launch {
                             val r = manager.listDirectory(WebdavConfig(configUrl, configUser, configPass), currentPath)
@@ -156,19 +160,20 @@ fun WebdavImportScreen(
                             r.onSuccess { items = it }
                             r.onFailure { errorMsg = it.message }
                         }
-                    }) { Icon(Icons.Default.Refresh, "刷新", tint = accentColor, modifier = Modifier.size(18.dp)) }
+                    }) { Icon(painterResource(R.drawable.ic_apple_refresh), "刷新", tint = accentColor, modifier = Modifier.size(18.dp)) }
                 }
 
                 if (isLoading) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = accentColor)
+                    Box(Modifier.fillMaxSize()) {
+                        // 骨架屏替代转圈:目录加载感知更快
+                        SkeletonSongRows(count = 6)
                     }
                 } else if (errorMsg != null) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(errorMsg!!, color = Color(0xFFFF4444), fontSize = 14.sp)
                             Spacer(Modifier.height(8.dp))
-                            TextButton(onClick = { phase = 0; errorMsg = null; connected = false }) {
+                            MuseTextButton(onClick = { phase = 0; errorMsg = null; connected = false }) {
                                 Text("返回配置", color = accentColor)
                             }
                         }
@@ -182,7 +187,7 @@ fun WebdavImportScreen(
                         val dirs = items.filter { it.isDirectory }
                         val files = items.filter { !it.isDirectory }
 
-                        items(dirs) { item ->
+                        items(dirs, key = { it.path }) { item ->
                             Row(Modifier.fillMaxWidth().clickable {
                                 isLoading = true
                                 scope.launch {
@@ -196,12 +201,12 @@ fun WebdavImportScreen(
                                 Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
                                     .background(accentColor.copy(alpha = 0.15f)),
                                     contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Default.Folder, null, tint = accentColor, modifier = Modifier.size(20.dp))
+                                    Icon(painterResource(R.drawable.ic_apple_folder), null, tint = accentColor, modifier = Modifier.size(20.dp))
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Text(item.name, color = textPrimary, fontSize = 15.sp,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                Icon(Icons.Default.ChevronRight, null, tint = textSecondary, modifier = Modifier.size(20.dp))
+                                Icon(painterResource(R.drawable.ic_apple_chevron_right), null, tint = textSecondary, modifier = Modifier.size(20.dp))
                             }
                             if (item != dirs.lastOrNull()) {
                                 HorizontalDivider(color = textSecondary.copy(alpha = 0.08f), modifier = Modifier.padding(start = 64.dp, end = 16.dp))
@@ -215,7 +220,7 @@ fun WebdavImportScreen(
                             }
                         }
 
-                        items(files) { item ->
+                        items(files, key = { it.path }) { item ->
                             val isAudio = item.name.let { n ->
                                 n.endsWith(".mp3", true) || n.endsWith(".flac", true) ||
                                 n.endsWith(".wav", true) || n.endsWith(".ogg", true) ||
@@ -233,7 +238,8 @@ fun WebdavImportScreen(
                                 Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
                                     .background(if (isSel) accentColor.copy(alpha = 0.25f) else cardBg),
                                     contentAlignment = Alignment.Center) {
-                                    Icon(if (isAudio) Icons.Default.MusicNote else Icons.Default.Description, null,
+                                    val fileIcon = if (isAudio) painterResource(R.drawable.ic_apple_music) else painterResource(R.drawable.ic_apple_file_text)
+                                    Icon(fileIcon, null,
                                         tint = if (isSel) accentColor else textSecondary, modifier = Modifier.size(20.dp))
                                 }
                                 Spacer(Modifier.width(12.dp))
@@ -243,7 +249,8 @@ fun WebdavImportScreen(
                                     Text(formatFileSize(item.size), color = textSecondary, fontSize = 11.sp)
                                 }
                                 if (isAudio) {
-                                    Icon(if (isSel) Icons.Default.CheckCircle else Icons.Default.Add, null,
+                                    val actionIcon = if (isSel) painterResource(R.drawable.ic_apple_circle_check) else painterResource(R.drawable.ic_apple_plus)
+                                    Icon(actionIcon, null,
                                         tint = if (isSel) accentColor else textSecondary.copy(alpha = 0.4f),
                                         modifier = Modifier.size(22.dp).padding(start = 8.dp))
                                 }
@@ -263,7 +270,7 @@ fun WebdavImportScreen(
                             Text("已选 " + selectedPaths.size + " 首", color = textPrimary,
                                 fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             Spacer(Modifier.weight(1f))
-                            Button(onClick = {
+                            MuseButton(onClick = {
                                 val config = WebdavConfig(configUrl, configUser, configPass)
                                 onImport(selectedPaths.toList(), config)
                             }, colors = ButtonDefaults.buttonColors(containerColor = accentColor),

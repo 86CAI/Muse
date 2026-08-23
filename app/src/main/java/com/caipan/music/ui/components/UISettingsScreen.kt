@@ -13,25 +13,46 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.caipan.music.R
 import com.caipan.music.viewmodel.UiStyle
 import com.kyant.backdrop.Backdrop
+
+@Composable
+private fun Modifier.appleSettingsSurface(
+    appleSolid: Boolean,
+    backdrop: Backdrop?,
+    shape: RoundedCornerShape,
+    glassColor: Color,
+    appleColor: Color,
+    blurRadius: androidx.compose.ui.unit.Dp = 0.dp,
+): Modifier = if (appleSolid) {
+    clip(shape).background(appleColor)
+} else {
+    museGlass(backdrop, shape, glassColor, blurRadius)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UISettingsScreen(
     initialBgOpacity: Float,
+    initialBgBlur: Float = 0f,
     isLightTheme: Boolean,
     isChinese: Boolean = true,
     accentColor: Color = Color(0xFF1DB954),
     playerBgMode: com.caipan.music.player.PlayerBgMode = com.caipan.music.player.PlayerBgMode.ALBUM_EXTEND,
     onPlayerBgModeChanged: (com.caipan.music.player.PlayerBgMode) -> Unit = {},
     onBgOpacityChanged: (Float) -> Unit,
-    uiStyle: UiStyle = UiStyle.APPLE,
+    onBgBlurChanged: (Float) -> Unit = {},
+    uiStyle: UiStyle = UiStyle.LIQUID,
     onUiStyleChanged: (UiStyle) -> Unit = {},
+    onlineSearchEnabled: Boolean = false,
+    onOnlineSearchEnabledChange: (Boolean) -> Unit = {},
     backdrop: Backdrop? = null,
     onBackup: () -> Unit = {},
     onRestore: () -> Unit = {},
@@ -41,19 +62,29 @@ fun UISettingsScreen(
     val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
     val bgColor = MaterialTheme.colorScheme.background.copy(alpha = 0.42f)
     val cardBg = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.34f)
+    // MeloX 版式沿用 Muse 的玻璃/背景基建；不再有独立的 Apple 不透明层级。
+    val appleSolid = false
+    val appleSurface = if (isLightTheme) Color.White else Color(0xFF1C1C1E)
     var bgOpacity by remember(initialBgOpacity) { mutableStateOf(initialBgOpacity) }
+    var bgBlur by remember(initialBgBlur) { mutableStateOf(initialBgBlur) }
+    var onlineSearch by remember(onlineSearchEnabled) { mutableStateOf(onlineSearchEnabled) }
     val zh = isChinese
+    val inputBlocker = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
 
-    Box(Modifier.fillMaxSize().museGlass(backdrop, RoundedCornerShape(0.dp), bgColor, 24.dp)) {
+    Box(
+        Modifier.fillMaxSize()
+            .appleSettingsSurface(appleSolid, backdrop, RoundedCornerShape(0.dp), bgColor, appleSurface, 24.dp)
+            .clickable(interactionSource = inputBlocker, indication = null) {}
+    ) {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             // Header
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.ArrowBack, if (zh) "返回" else "Back",
+                MuseIconButton(onClick = onDismiss) {
+                    Icon(painterResource(R.drawable.ic_apple_arrow_left), if (zh) "返回" else "Back",
                         tint = textPrimary, modifier = Modifier.size(24.dp))
                 }
-                Text(if (zh) "界面设置" else "UI Settings",
+                Text(if (zh) "更多设置" else "More Settings",
                     color = textPrimary, style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f).padding(start = 8.dp))
             }
@@ -64,7 +95,7 @@ fun UISettingsScreen(
                     color = accentColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
 
-                Card(Modifier.fillMaxWidth().museGlass(backdrop, RoundedCornerShape(18.dp), cardBg),
+                Card(Modifier.fillMaxWidth().appleSettingsSurface(appleSolid, backdrop, RoundedCornerShape(18.dp), cardBg, appleSurface),
                     colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                     shape = RoundedCornerShape(14.dp)) {
                     Column(Modifier.padding(20.dp)) {
@@ -97,6 +128,39 @@ fun UISettingsScreen(
                                 modifier = Modifier.padding(start = 12.dp))
                             Text("90%", color = textSecondary, style = MaterialTheme.typography.labelSmall)
                         }
+
+                        HorizontalDivider(
+                            Modifier.padding(vertical = 16.dp),
+                            color = textSecondary.copy(alpha = 0.1f)
+                        )
+
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(if (zh) "背景模糊度" else "Background Blur",
+                                    color = textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                                Spacer(Modifier.height(2.dp))
+                                Text(if (zh) "模糊壁纸背景，突出前景内容" else "Blurs the wallpaper for foreground focus",
+                                    color = textSecondary, fontSize = 12.sp)
+                            }
+                            Text("${bgBlur.toInt()}",
+                                color = accentColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        MuseGlassSlider(
+                            value = bgBlur,
+                            onValueChange = {
+                                bgBlur = it
+                                onBgBlurChanged(it)
+                            },
+                            valueRange = 0f..40f,
+                            accentColor = accentColor,
+                            backdrop = backdrop,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(if (zh) "关闭" else "Off", color = textSecondary, style = MaterialTheme.typography.labelSmall)
+                            Text("40", color = textSecondary, style = MaterialTheme.typography.labelSmall)
+                        }
                     }
                 }
 
@@ -108,7 +172,9 @@ fun UISettingsScreen(
 
                 Box(Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(14.dp)).background(cardBg)) {
                     // Simulated wallpaper stripes
-                    Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxSize().padding(16.dp)
+                        .then(if (bgBlur > 0f && !LocalMuseMonet.current) Modifier.blur(bgBlur.dp) else Modifier),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Surface(Modifier.weight(1f).fillMaxHeight(), shape = RoundedCornerShape(8.dp), color = Color(0xFF1DB954)) {}
                         Surface(Modifier.weight(1f).fillMaxHeight(), shape = RoundedCornerShape(8.dp), color = Color(0xFF0A84FF)) {}
                         Surface(Modifier.weight(1f).fillMaxHeight(), shape = RoundedCornerShape(8.dp), color = Color(0xFFAF52DE)) {}
@@ -151,8 +217,8 @@ fun UISettingsScreen(
                     com.caipan.music.player.PlayerBgMode.DYNAMIC_COLOR to (if (zh) "提取封面主色，呆呼吸般渐变流动" else "Breathing gradient from album colors"),
                     com.caipan.music.player.PlayerBgMode.CUSTOM to (if (zh) "使用设置中的自定义壁纸" else "Use your custom wallpaper")
                 )
-                var selectedMode by remember { mutableStateOf(playerBgMode) }
-                Card(Modifier.fillMaxWidth().museGlass(backdrop, RoundedCornerShape(18.dp), cardBg),
+                var selectedMode by remember(playerBgMode) { mutableStateOf(playerBgMode) }
+                Card(Modifier.fillMaxWidth().appleSettingsSurface(appleSolid, backdrop, RoundedCornerShape(18.dp), cardBg, appleSurface),
                     colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                     shape = RoundedCornerShape(14.dp)) {
                     Column {
@@ -167,10 +233,11 @@ fun UISettingsScreen(
                                     Spacer(Modifier.height(2.dp))
                                     Text(modeDesc[mode] ?: "", color = textSecondary, fontSize = 12.sp)
                                 }
-                                RadioButton(
+                                MuseGlassRadioButton(
                                     selected = selectedMode == mode,
                                     onClick = { selectedMode = mode; onPlayerBgModeChanged(mode) },
-                                    colors = RadioButtonDefaults.colors(selectedColor = accentColor)
+                                    accentColor = accentColor,
+                                    backdrop = backdrop
                                 )
                             }
                             if (idx < modes.size - 1) {
@@ -189,15 +256,17 @@ fun UISettingsScreen(
                     modifier = Modifier.padding(bottom = 8.dp))
 
                 val styles = listOf(
-                    UiStyle.APPLE to "原版",
-                    UiStyle.MONET to "Liquid Glass"
+                    UiStyle.MELOX to "MeloX",
+                    UiStyle.CLOUD to (if (zh) "云版" else "Cloud"),
+                    UiStyle.LIQUID to "Liquid Glass",
                 )
                 val styleDesc = mapOf(
-                    UiStyle.APPLE to (if (zh) "Apple Music 风格，控件使用传统实时磨砂模糊" else "Apple Music style with classic real-time frosted blur"),
-                    UiStyle.MONET to (if (zh) "动态折射、RGB 色散、高光、内阴影与弹性玻璃" else "Refraction, RGB dispersion, highlights, inner shadows and elastic glass")
+                    UiStyle.MELOX to (if (zh) "悬浮胶囊底栏与大标题首页，移植自开源项目 Mei_MeloX_Android" else "Floating capsule tab bar with a large-title home, ported from the open-source Mei_MeloX_Android"),
+                    UiStyle.CLOUD to (if (zh) "Muse 现有云版首页与资料库布局，不使用玻璃" else "Muse's existing Cloud home and library layout — no glass"),
+                    UiStyle.LIQUID to (if (zh) "动态折射、RGB 色散、高光、内阴影与弹性玻璃" else "Refraction, RGB dispersion, highlights, inner shadows and elastic glass"),
                 )
                 var selectedStyle by remember(uiStyle) { mutableStateOf(uiStyle) }
-                Card(Modifier.fillMaxWidth().museGlass(backdrop, RoundedCornerShape(18.dp), cardBg),
+                Card(Modifier.fillMaxWidth().appleSettingsSurface(appleSolid, backdrop, RoundedCornerShape(18.dp), cardBg, appleSurface),
                     colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                     shape = RoundedCornerShape(14.dp)) {
                     Column {
@@ -215,10 +284,11 @@ fun UISettingsScreen(
                                     Spacer(Modifier.height(2.dp))
                                     Text(styleDesc[style] ?: "", color = textSecondary, fontSize = 12.sp)
                                 }
-                                RadioButton(
+                                MuseGlassRadioButton(
                                     selected = selectedStyle == style,
                                     onClick = { selectedStyle = style; onUiStyleChanged(style) },
-                                    colors = RadioButtonDefaults.colors(selectedColor = accentColor)
+                                    accentColor = accentColor,
+                                    backdrop = backdrop
                                 )
                             }
                             if (idx < styles.size - 1) {
@@ -231,10 +301,56 @@ fun UISettingsScreen(
 
                 Spacer(Modifier.height(24.dp))
 
+                Text(if (zh) "在线音乐" else "Online Music",
+                    color = accentColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(bottom = 8.dp))
+
+                Card(Modifier.fillMaxWidth().appleSettingsSurface(appleSolid, backdrop, RoundedCornerShape(18.dp), cardBg, appleSurface),
+                    colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                    shape = RoundedCornerShape(14.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth().clickable {
+                            onlineSearch = !onlineSearch
+                            onOnlineSearchEnabledChange(onlineSearch)
+                        }.padding(horizontal = 18.dp, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.ic_apple_cloud),
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+                            Text(if (zh) "在线模式" else "Online mode",
+                                color = textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                if (zh) "首页显示网易云推荐，资料库显示网易云歌单；登录后可使用官方播放地址。"
+                                else "Show NetEase recommendations on Home and remote playlists in Library.",
+                                color = textSecondary,
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp
+                            )
+                        }
+                        MuseGlassSwitch(
+                            checked = onlineSearch,
+                            onCheckedChange = {
+                                onlineSearch = it
+                                onOnlineSearchEnabledChange(it)
+                            },
+                            accentColor = accentColor,
+                            backdrop = backdrop
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
+
                 // ── Backup ──
                 Text(if (zh) "完整备份" else "Full Backup", color = accentColor, fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
-                Card(Modifier.fillMaxWidth().museGlass(backdrop, RoundedCornerShape(18.dp), cardBg),
+                Card(Modifier.fillMaxWidth().appleSettingsSurface(appleSolid, backdrop, RoundedCornerShape(18.dp), cardBg, appleSurface),
                     colors = CardDefaults.cardColors(containerColor = Color.Transparent), shape = RoundedCornerShape(14.dp)) {
                     Column(Modifier.padding(18.dp)) {
                         Text(if (zh) "备份所有设置与模块" else "Back up all settings and modules", color = textPrimary,
@@ -244,10 +360,10 @@ fun UISettingsScreen(
                             color = textSecondary, fontSize = 12.sp, lineHeight = 18.sp)
                         Spacer(Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedButton(onClick = onBackup, modifier = Modifier.weight(1f)) {
+                            MuseOutlinedButton(onClick = onBackup, modifier = Modifier.weight(1f)) {
                                 Text(if (zh) "导出备份" else "Export")
                             }
-                            Button(onClick = onRestore, modifier = Modifier.weight(1f)) {
+                            MuseButton(onClick = onRestore, modifier = Modifier.weight(1f)) {
                                 Text(if (zh) "还原备份" else "Restore")
                             }
                         }
@@ -257,12 +373,12 @@ fun UISettingsScreen(
                 Spacer(Modifier.height(24.dp))
 
                 // ── Tips ──
-                Card(Modifier.fillMaxWidth().museGlass(backdrop, RoundedCornerShape(18.dp), cardBg),
+                Card(Modifier.fillMaxWidth().appleSettingsSurface(appleSolid, backdrop, RoundedCornerShape(18.dp), cardBg, appleSurface),
                     colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                     shape = RoundedCornerShape(14.dp)) {
                     Column(Modifier.padding(20.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Info, contentDescription = null,
+                            Icon(painterResource(R.drawable.ic_apple_info), contentDescription = null,
                                 tint = accentColor, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(if (zh) "提示" else "Tip",

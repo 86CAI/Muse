@@ -1,15 +1,18 @@
-const defaults = { cornerRadius: 24, blurRadius: 12, refractionHeight: 12, refractionAmount: 24, chromaticAberration: 1 };
+const defaults = { cornerRadius: 24, blurRadius: 12, refractionHeight: 12, refractionAmount: 24, chromaticAberration: 1, themeColorIntensity: .18, elasticity: .5, pressScale: 1.5 };
 const fields = {
   cornerRadius: { name: 'Corner radius', note: '玻璃轮廓的圆角半径', min: 0, max: 80, step: 1, unit: 'dp' },
   blurRadius: { name: 'Blur radius', note: '背景采样的模糊范围', min: 0, max: 64, step: 1, unit: 'dp' },
   refractionHeight: { name: 'Refraction height', note: '透镜边缘的折射厚度', min: 0, max: 80, step: 1, unit: 'dp' },
   refractionAmount: { name: 'Refraction amount', note: '背景光线的位移强度', min: 0, max: 80, step: 1, unit: 'dp' },
-  chromaticAberration: { name: 'Chromatic aberration', note: 'RGB 边缘色散开关强度', min: 0, max: 1, step: .01, unit: '' }
+  chromaticAberration: { name: 'Chromatic aberration', note: 'RGB 边缘色散强度', min: 0, max: 1, step: .01, unit: '' },
+  themeColorIntensity: { name: 'Theme color', note: '主题色对中性玻璃的染色程度', min: 0, max: 1, step: .01, unit: '' },
+  elasticity: { name: 'Elasticity', note: '开关和滑块的回弹活跃度', min: 0, max: 1, step: .01, unit: '' },
+  pressScale: { name: 'Press expansion', note: '控件按压时的最大膨胀比例', min: 1, max: 1.8, step: .01, unit: '×' }
 };
 const presets = {
-  soft: { cornerRadius: 32, blurRadius: 22, refractionHeight: 8, refractionAmount: 12, chromaticAberration: .18 },
-  crystal: { cornerRadius: 24, blurRadius: 6, refractionHeight: 18, refractionAmount: 36, chromaticAberration: .68 },
-  bold: { cornerRadius: 38, blurRadius: 14, refractionHeight: 30, refractionAmount: 64, chromaticAberration: 1 }
+  soft: { cornerRadius: 32, blurRadius: 22, refractionHeight: 8, refractionAmount: 12, chromaticAberration: .18, themeColorIntensity: .08, elasticity: .25, pressScale: 1.22 },
+  crystal: { cornerRadius: 24, blurRadius: 6, refractionHeight: 18, refractionAmount: 36, chromaticAberration: .68, themeColorIntensity: .16, elasticity: .55, pressScale: 1.45 },
+  bold: { cornerRadius: 38, blurRadius: 14, refractionHeight: 30, refractionAmount: 64, chromaticAberration: 1, themeColorIntensity: .42, elasticity: .82, pressScale: 1.68 }
 };
 
 let config = { ...defaults };
@@ -56,12 +59,17 @@ function paint() {
   root.style.setProperty('--refract-height', `${config.refractionHeight}px`);
   root.style.setProperty('--refract-amount', `${config.refractionAmount}px`);
   root.style.setProperty('--chroma', config.chromaticAberration);
+  root.style.setProperty('--theme-strength', config.themeColorIntensity);
+  root.style.setProperty('--theme-mix', `${config.themeColorIntensity * 38}%`);
+  root.style.setProperty('--elasticity', config.elasticity);
+  root.style.setProperty('--press-scale', config.pressScale);
   Object.entries(fields).forEach(([key, field]) => {
     const input = document.querySelector(`#${key}`);
     if (!input) return;
     input.value = config[key];
     input.style.setProperty('--fill', `${(config[key] - field.min) / (field.max - field.min) * 100}%`);
-    document.querySelector(`[data-value="${key}"]`).textContent = `${config[key].toFixed(key === 'chromaticAberration' ? 2 : 0)}${field.unit ? ` ${field.unit}` : ''}`;
+    const decimals = field.step < 1 ? 2 : 0;
+    document.querySelector(`[data-value="${key}"]`).textContent = `${config[key].toFixed(decimals)}${field.unit || ''}`;
   });
 }
 

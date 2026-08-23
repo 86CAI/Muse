@@ -18,7 +18,7 @@ fun MonetPlayerScreen(
     onSeek: (Long) -> Unit, onRepeatToggle: () -> Unit, onShuffleToggle: () -> Unit,
     onDismiss: () -> Unit, onLandscapeToggle: () -> Unit = {}, customBgColor: Color? = null, wallpaperUri: Uri? = null,
     isLightTheme: Boolean = false, bgMode: PlayerBgMode = PlayerBgMode.ALBUM_EXTEND,
-    lyricsLoader: (suspend (Long) -> List<LyricLine>)? = null, modifier: Modifier = Modifier
+    lyricsLoader: (suspend (Song) -> List<LyricLine>)? = null, modifier: Modifier = Modifier
 ) = PlayerScreen(
     song = song, isPlaying = isPlaying, progressMs = progressMs, durationMs = durationMs,
     repeatMode = repeatMode, isShuffled = isShuffled, onPlayPause = onPlayPause,

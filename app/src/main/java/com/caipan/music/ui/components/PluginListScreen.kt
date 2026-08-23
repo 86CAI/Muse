@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -48,13 +50,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import com.caipan.music.R
 import com.caipan.music.plugin.BlurLocation
 import com.caipan.music.plugin.BlurPolicy
 import com.caipan.music.plugin.GlobalBlurControlPlugin
 import com.caipan.music.plugin.PluginInfo
+import com.caipan.music.plugin.PerformanceControlPlugin
+import com.caipan.music.plugin.PerformancePolicy
+import com.caipan.music.plugin.FrameRateScene
 import com.kyant.backdrop.Backdrop
+import kotlin.math.roundToInt
 
 @Composable
 fun PluginListScreen(
@@ -74,7 +83,18 @@ fun PluginListScreen(
     blurPolicy: BlurPolicy = LocalMuseBlurPolicy.current,
     onBlurMasterChange: (Boolean) -> Unit = {},
     onBlurLocationChange: (BlurLocation, Boolean) -> Unit = { _, _ -> },
-    onReadabilityBlurChange: (Float) -> Unit = {}
+    onReadabilityBlurChange: (Float) -> Unit = {},
+    performancePolicy: PerformancePolicy = PerformancePolicy(),
+    onPerformanceMasterChange: (Boolean) -> Unit = {},
+    onSceneFpsChange: (FrameRateScene, Int) -> Unit = { _, _ -> },
+    onlineSources: List<OnlineSourceUiModel> = emptyList(),
+    isImportingOnlineSource: Boolean = false,
+    onlineSourceMessage: String? = null,
+    onImportOnlineSourceUrl: (String) -> Unit = {},
+    onImportOnlineSourceFile: (Uri, String) -> Unit = { _, _ -> },
+    onOnlineSourceEnabledChange: (String, Boolean) -> Unit = { _, _ -> },
+    onDeleteOnlineSource: (String) -> Unit = {},
+    onOpenOnlineSourceIndex: (String) -> Unit = {}
 ) {
     val cardColor = Color.Transparent
     val primary = androidx.compose.material3.MaterialTheme.colorScheme.onBackground
@@ -84,6 +104,27 @@ fun PluginListScreen(
     }
     var expandedPermissionsFor by remember { mutableStateOf<String?>(null) }
     var deleteTarget by remember { mutableStateOf<PluginInfo?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    fun shareErrorLogs() {
+        val logNames = listOf("playback_errors.log", "search_errors.log", "lx_host_errors.log")
+        val files = logNames.mapNotNull { name ->
+            java.io.File(context.filesDir, name).takeIf { it.isFile }
+        }
+        if (files.isEmpty()) {
+            android.widget.Toast.makeText(context, "暂无错误日志", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        val uris = files.map {
+            androidx.core.content.FileProvider.getUriForFile(context, "com.caipan.music.fileprovider", it)
+        }
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "text/plain"
+            putParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM, ArrayList(uris))
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(android.content.Intent.createChooser(intent, "分享错误日志"))
+    }
 
     FullScreenGlassRoute(backdrop = backdrop, isLightTheme = isLightTheme) {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
@@ -91,16 +132,19 @@ fun PluginListScreen(
                 Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.ArrowBack, "返回", tint = primary, modifier = Modifier.size(24.dp))
+                MuseIconButton(onClick = onDismiss) {
+                    Icon(painterResource(R.drawable.ic_apple_arrow_left), "返回", tint = primary, modifier = Modifier.size(24.dp))
                 }
-                Text("播放插件", color = primary, style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                Text("插件与音源", color = primary, style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f).padding(start = 8.dp))
-                IconButton(
+                MuseIconButton(
                     onClick = { importLauncher.launch(arrayOf("application/zip", "application/octet-stream", "application/x-zip-compressed", "*/*")) },
                     enabled = !isInstalling
                 ) {
-                    Icon(Icons.Default.FileOpen, "导入 .museplugin", tint = accentColor)
+                    Icon(painterResource(R.drawable.ic_apple_file_text), "导入 .museplugin", tint = accentColor)
+                }
+                MuseIconButton(onClick = { shareErrorLogs() }) {
+                    Icon(painterResource(R.drawable.ic_apple_share), "分享错误日志", tint = accentColor)
                 }
                 Text("${plugins.count { it.enabled }}/${plugins.size} 已启用", color = secondary,
                     fontSize = 12.sp, modifier = Modifier.padding(end = 12.dp))
@@ -128,10 +172,25 @@ fun PluginListScreen(
                 )
             }
 
-            LazyColumn(
+LazyColumn(
                 Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(bottom = 40.dp)
             ) {
+                item(key = "online-source-settings") {
+                    OnlineSourceSettingsSection(
+                        sources = onlineSources,
+                        accentColor = accentColor,
+                        backdrop = backdrop,
+                        isImporting = isImportingOnlineSource,
+                        message = onlineSourceMessage,
+                        onImportUrl = onImportOnlineSourceUrl,
+                        onImportFile = onImportOnlineSourceFile,
+                        onEnabledChange = onOnlineSourceEnabledChange,
+                        onDelete = onDeleteOnlineSource,
+                        onOpenIndex = onOpenOnlineSourceIndex
+                    )
+                }
                 items(plugins, key = { it.id }) { plugin ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
@@ -150,33 +209,36 @@ fun PluginListScreen(
                                 Modifier.size(44.dp).background(accentColor.copy(alpha = 0.14f), RoundedCornerShape(12.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.Extension, null, tint = accentColor)
+                                Icon(painterResource(R.drawable.ic_apple_puzzle), null, tint = accentColor)
                             }
                             Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
                                 Text(plugin.name, color = primary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                                 Text("v${plugin.version} · ${plugin.author}", color = secondary, fontSize = 12.sp)
                                 Spacer(Modifier.height(7.dp))
-                                Text(plugin.description, color = secondary, fontSize = 13.sp, lineHeight = 18.sp)
+                                Text(plugin.description, color = secondary, fontSize = 13.sp, lineHeight = 18.sp,
+                                    maxLines = 3, overflow = TextOverflow.Ellipsis)
                                 Text("Hook：${plugin.hooks.joinToString()}", color = accentColor,
-                                    fontSize = 12.sp, modifier = Modifier.padding(top = 7.dp))
+                                    fontSize = 12.sp, modifier = Modifier.padding(top = 7.dp),
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 if (plugin.networkAllowHosts.isNotEmpty()) {
                                     Text("网络：${plugin.networkAllowHosts.joinToString()}", color = secondary,
-                                        fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
+                                        fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp),
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                             }
                             if (plugin.hasWebUi) {
-                                IconButton(onClick = { onOpenWebUi(plugin.id) }) {
-                                    Icon(Icons.Default.OpenInBrowser, "打开 WebUI", tint = accentColor)
+                                MuseIconButton(onClick = { onOpenWebUi(plugin.id) }) {
+                                    Icon(painterResource(R.drawable.ic_apple_globe), "打开 WebUI", tint = accentColor)
                                 }
                             }
                             if (plugin.id == "com.caipan.muse.external-player-monitor") {
-                                IconButton(onClick = onOpenExternalPlayerAccess) {
-                                    Icon(Icons.Default.Security, "开启系统监听权限", tint = accentColor)
+                                MuseIconButton(onClick = onOpenExternalPlayerAccess) {
+                                    Icon(painterResource(R.drawable.ic_apple_shield), "开启系统监听权限", tint = accentColor)
                                 }
                             }
                             if (plugin.external) {
-                                IconButton(onClick = { deleteTarget = plugin }) {
-                                    Icon(Icons.Default.Delete, "删除外部模块", tint = Color(0xFFE53935))
+                                MuseIconButton(onClick = { deleteTarget = plugin }) {
+                                    Icon(painterResource(R.drawable.ic_apple_trash), "删除外部模块", tint = Color(0xFFE53935))
                                 }
                             }
                             MuseGlassSwitch(
@@ -196,6 +258,15 @@ fun PluginListScreen(
                                 onReadabilityChange = onReadabilityBlurChange
                             )
                         }
+                        if (plugin.id == PerformanceControlPlugin.ID) {
+                            PerformanceControlSettings(
+                                policy = performancePolicy,
+                                accentColor = accentColor,
+                                backdrop = backdrop,
+                                onMasterChange = onPerformanceMasterChange,
+                                onSceneFpsChange = onSceneFpsChange
+                            )
+                        }
                         if (plugin.permissions.isNotEmpty()) {
                             val expanded = expandedPermissionsFor == plugin.id
                             Row(
@@ -204,13 +275,14 @@ fun PluginListScreen(
                                     .padding(vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.Security, null, tint = accentColor, modifier = Modifier.size(18.dp))
+                                Icon(painterResource(R.drawable.ic_apple_shield), null, tint = accentColor, modifier = Modifier.size(18.dp))
                                 Text(
                                     "权限 ${plugin.grantedPermissions.size}/${plugin.permissions.size}",
                                     color = primary, fontSize = 13.sp, fontWeight = FontWeight.Medium,
                                     modifier = Modifier.weight(1f).padding(start = 8.dp)
                                 )
-                                Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null, tint = secondary)
+                                val expandIcon = if (expanded) painterResource(R.drawable.ic_apple_chevron_up) else painterResource(R.drawable.ic_apple_chevron_down)
+                                Icon(expandIcon, null, tint = secondary)
                             }
                             if (expanded) {
                                 Text(
@@ -247,12 +319,12 @@ fun PluginListScreen(
         }
     }
     deleteTarget?.let { plugin ->
-        AlertDialog(
+        MuseAlertDialog(
             onDismissRequest = { deleteTarget = null },
             title = { Text("删除外部模块？") },
             text = { Text("将删除 ${plugin.name} 及其配置，内置模块不会受影响。") },
-            confirmButton = { TextButton(onClick = { deleteTarget = null; onDeleteExternal(plugin.id) }) { Text("删除") } },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("取消") } }
+            confirmButton = { MuseTextButton(onClick = { deleteTarget = null; onDeleteExternal(plugin.id) }) { Text("删除") } },
+            dismissButton = { MuseTextButton(onClick = { deleteTarget = null }) { Text("取消") } }
         )
     }
 }
@@ -296,6 +368,48 @@ private fun BlurControlSettings(
         backdrop = backdrop,
         modifier = Modifier.fillMaxWidth()
     )
+}
+
+@Composable
+private fun PerformanceControlSettings(
+    policy: PerformancePolicy,
+    accentColor: Color,
+    backdrop: Backdrop?,
+    onMasterChange: (Boolean) -> Unit,
+    onSceneFpsChange: (FrameRateScene, Int) -> Unit
+) {
+    HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color.White.copy(alpha = .12f))
+    Text("性能控制", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("限制各场景动画帧率", modifier = Modifier.weight(1f), fontSize = 13.sp)
+        MuseGlassSwitch(policy.masterEnabled, onMasterChange, accentColor, backdrop)
+    }
+    FrameRateScene.entries.forEach { scene ->
+        val fps = policy.fpsFor(scene)
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                scene.label,
+                fontSize = 13.sp,
+                modifier = Modifier.weight(1f),
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                if (fps <= 0) "不限" else "${fps} fps",
+                fontSize = 12.sp,
+                color = accentColor,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        MuseGlassSlider(
+            value = fps.toFloat(),
+            onValueChange = { onSceneFpsChange(scene, it.roundToInt()) },
+            valueRange = 0f..120f,
+            accentColor = accentColor,
+            backdrop = backdrop,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = policy.masterEnabled
+        )
+    }
 }
 
 private fun permissionLabel(permission: String): String = when (permission) {

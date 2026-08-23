@@ -1,4 +1,4 @@
-﻿package com.caipan.music.viewmodel
+package com.caipan.music.viewmodel
 
 import android.app.Application
 import android.content.ContentValues
@@ -12,16 +12,38 @@ import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.caipan.music.data.MusicRepository
+import com.caipan.music.data.OnlineMusicPreferences
+import com.caipan.music.data.MusicMode
+import com.caipan.music.data.NeteaseSession
 import com.caipan.music.data.Playlist
 import com.caipan.music.data.PlaylistManager
 import com.caipan.music.data.WebdavConfig
 import com.caipan.music.data.WebdavManager
 import com.caipan.music.model.Song
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import com.caipan.music.online.KugouCatalog
+import com.caipan.music.online.KuwoCatalog
+import com.caipan.music.online.LxSourceDescriptor
+import com.caipan.music.online.MusicCapability
+import com.caipan.music.online.OnlineCatalog
+import com.caipan.music.online.OnlineSearchResult
+import com.caipan.music.online.OnlineTrack
+import com.caipan.music.online.NeteaseComment
+import com.caipan.music.online.NeteaseHomeContent
+import com.caipan.music.online.NeteaseHomePodcast
+import com.caipan.music.online.NeteaseProfileDetails
+import com.caipan.music.online.RemotePlaylistDetail
+import com.caipan.music.online.RemotePlaylistSummary
+import com.caipan.music.online.QQMusicCatalog
+import com.caipan.music.online.toOnlineTrack
+import com.caipan.music.online.toSong
 import com.caipan.music.plugin.PluginInfo
 import com.caipan.music.plugin.PluginManager
 import com.caipan.music.plugin.PluginNetworkRequest
 import com.caipan.music.plugin.PluginWebUiSession
 import com.caipan.music.player.EqualizerManager
+import com.caipan.music.player.LyricLine
 import com.caipan.music.player.MusicPlayer
 import com.caipan.music.player.PlayerUiState
 import com.caipan.music.player.RepeatMode
@@ -31,6 +53,7 @@ import com.caipan.music.lan.LanRemoteManager
 import com.caipan.music.lan.LanRemoteService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,11 +62,32 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 
-enum class UiStyle { APPLE, MONET }
+enum class UiStyle {
+    /** MeloX 风格：悬浮胶囊底栏 + 大标题首页 + 胶囊迷你播放器（移植自 NEORUAA/Mei_MeloX_Android）。 */
+    MELOX,
+    /** Muse's existing classic hierarchy, renamed to 云版 (Cloud). */
+    CLOUD,
+    /** Liquid Glass：折射玻璃、RGB 色散与弹性阴影（基于 Kyant0/AndroidLiquidGlass）。 */
+    LIQUID,
+    /** Legacy persisted value; migrated to [CLOUD] during preference loading. */
+    @Deprecated("Use CLOUD")
+    MONET
+}
+
+/** 解析持久化的版式；旧版 "APPLE"（Apple Music 版式）已由 MeloX 移植版取代。 */
+fun resolveUiStyle(raw: String?): UiStyle = when (raw) {
+    null -> UiStyle.LIQUID
+    "APPLE" -> UiStyle.MELOX
+    else -> try { UiStyle.valueOf(raw) } catch (_: Exception) { UiStyle.LIQUID }
+}
+
+private const val FAVORITES_PLAYLIST_ID = "favorites"
+private const val FAVORITES_PLAYLIST_NAME = "我喜欢的音乐"
 
 data class MusicUiState(
     val songs: List<Song> = emptyList(),
@@ -59,7 +103,7 @@ data class MusicUiState(
     val playerBgMode: com.caipan.music.player.PlayerBgMode = com.caipan.music.player.PlayerBgMode.ALBUM_EXTEND,
     val batchMode: Boolean = false,
     val selectedIds: Set<Long> = emptySet(),
-    val uiStyle: UiStyle = UiStyle.APPLE,
+    val uiStyle: UiStyle = UiStyle.LIQUID,
     val profileName: String = "Muse 用户",
     val profileAvatar: Uri? = null,
     val listeningTimeMs: Long = 0,
@@ -69,7 +113,33 @@ data class MusicUiState(
     val plugins: List<PluginInfo> = emptyList(),
     val pluginInstalling: Boolean = false,
     val pluginMessage: String? = null,
-
+    val onlineSearchEnabled: Boolean = false,
+    val musicMode: MusicMode = MusicMode.LOCAL,
+    val neteaseSession: NeteaseSession? = null,
+    val onlineHome: NeteaseHomeContent? = null,
+    val onlineProfileDetails: NeteaseProfileDetails? = null,
+    val onlinePlaylists: List<RemotePlaylistSummary> = emptyList(),
+    val onlineLikedSongs: List<OnlineTrack> = emptyList(),
+    val onlineRecentSongs: List<OnlineTrack> = emptyList(),
+    val onlinePlaylistDetail: RemotePlaylistDetail? = null,
+    val onlineLoading: Boolean = false,
+    val onlineError: String? = null,
+    val neteaseCommentsSongId: Long? = null,
+    val neteaseHotComments: List<NeteaseComment> = emptyList(),
+    val neteaseLatestComments: List<NeteaseComment> = emptyList(),
+    val neteaseCommentsTotal: Int = 0,
+    val neteaseCommentsHasMore: Boolean = false,
+    val neteaseCommentsNextOffset: Int = 0,
+    val neteaseCommentsNextBeforeTime: Long = 0L,
+    val neteaseCommentsInitialLoading: Boolean = false,
+    val neteaseCommentsRefreshing: Boolean = false,
+    val neteaseCommentsLoadingMore: Boolean = false,
+    val neteaseCommentsError: String? = null,
+    val onlineSources: List<LxSourceDescriptor> = emptyList(),
+    val onlineSourceImporting: Boolean = false,
+    val onlineSourceMessage: String? = null,
+    val playbackSettings: com.caipan.music.player.PlaybackSettings = com.caipan.music.player.PlaybackSettings(),
+    val sleepTimerRemainingMs: Long = 0
 ) {
     val filteredSongs: List<Song>
         get() = if (searchQuery.isBlank()) songs
@@ -85,7 +155,19 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = MusicRepository(application)
     private val museApplication = application as MuseApplication
     private val pluginManager = museApplication.pluginManager
+    private val onlineSourceManager = museApplication.onlineSourceManager
+    private val onlinePreferences = OnlineMusicPreferences(application)
+    val onlineCatalog = museApplication.onlineCatalog
+    val onlineCatalogs: List<OnlineCatalog> = listOf(
+        onlineCatalog,
+        KuwoCatalog(),
+        KugouCatalog(),
+        QQMusicCatalog()
+    )
     val player = museApplication.musicPlayer
+    val playbackSettingsStore = museApplication.playbackSettingsStore
+    val audioEffectsManager = com.caipan.music.player.AudioEffectsManager()
+    val playHistoryManager = com.caipan.music.data.PlayHistoryManager(application)
     val externalPlayerMonitor = museApplication.externalPlayerMonitorPlugin
     val externalPlayerState = externalPlayerMonitor.state
     val eqManager = EqualizerManager(application)
@@ -96,22 +178,51 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(MusicUiState())
     val uiState: StateFlow<MusicUiState> = _uiState.asStateFlow()
     private var wallpaperSaveJob: Job? = null
+    private var neteaseCommentsJob: Job? = null
+    private var neteaseCommentsLoadMoreJob: Job? = null
 
     init {
         loadSongs()
         startProgressUpdater()
         loadPrefs()
+        viewModelScope.launch {
+            museApplication.neteaseSessionStore.session.collect { session ->
+                _uiState.value = _uiState.value.copy(neteaseSession = session)
+                if (_uiState.value.musicMode == MusicMode.ONLINE) {
+                    refreshOnlineContent()
+                }
+            }
+        }
+        audioEffectsManager.syncFromSettings(playbackSettingsStore.state.value)
+        player.onAudioSessionChanged = { sessionId ->
+            eqManager.attach(sessionId)
+            audioEffectsManager.attach(sessionId)
+        }
     }
 
     private fun prefs() = getApplication<Application>().getSharedPreferences("muse_prefs", 0)
 
     private fun loadPrefs() {
         val p = prefs()
+        // 一次性迁移：旧版（< 2026-08）把 Liquid Glass 存成了 "MONET"
+        if (!p.getBoolean("ui_style_migrated", false)) {
+            val raw = p.getString("ui_style", null)
+            // Before the dedicated Apple route existed, the APPLE label was
+            // used for Muse's existing cloud/classic hierarchy. Preserve that
+            // saved choice under its new name; newly selected Apple mode is
+            // written after this one-time migration has completed.
+            if (raw == "MONET" || raw == "APPLE") {
+                p.edit().putString("ui_style", "CLOUD").apply()
+            }
+            p.edit().putBoolean("ui_style_migrated", true).apply()
+        }
+        // MELOX 是 Apple Music 版式的替代路线；CLOUD 承接旧版 MONET 的迁移。
         val wallpaperPath = p.getString("wallpaper_path", null)
         val videoPath = p.getString("video_path", null)
         val lightTheme = p.getBoolean("light_theme", false)
         val bgMode = com.caipan.music.player.PlayerBgMode.fromName(p.getString("player_bg_mode", null))
-        val style = try { UiStyle.valueOf(p.getString("ui_style", "APPLE") ?: "APPLE") } catch (_: Exception) { UiStyle.APPLE }
+        // 解析 UiStyle；旧版 "MONET" 已迁移为 CLOUD，旧版 "APPLE" 映射为 MELOX。
+        val style = resolveUiStyle(p.getString("ui_style", "LIQUID"))
         val accentColor = if (p.contains("accent_color")) Color(p.getLong("accent_color", 0L).toULong()) else null
         val avatarPath = p.getString("profile_avatar", null)
         val repeatCounts = runCatching {
@@ -131,8 +242,340 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             completedPlays = p.getInt("completed_plays", 0),
             repeatCount = repeatCounts.values.sum().takeIf { it > 0 } ?: p.getInt("repeat_count", 0),
             repeatCountsBySongId = repeatCounts,
-            plugins = pluginManager.pluginInfo()
+            plugins = pluginManager.pluginInfo(),
+            onlineSearchEnabled = onlinePreferences.onlineSearchEnabled,
+            musicMode = onlinePreferences.musicMode,
+            neteaseSession = museApplication.neteaseSessionStore.session.value,
+            onlineSources = onlineSourceManager.listSources(),
+            playbackSettings = playbackSettingsStore.state.value
         )
+    }
+
+    fun setOnlineSearchEnabled(enabled: Boolean) {
+        setMusicMode(if (enabled) MusicMode.ONLINE else MusicMode.LOCAL)
+    }
+
+    fun setMusicMode(mode: MusicMode) {
+        onlinePreferences.musicMode = mode
+        _uiState.value = _uiState.value.copy(
+            musicMode = mode,
+            onlineSearchEnabled = mode == MusicMode.ONLINE,
+            onlineError = null
+        )
+        if (mode == MusicMode.ONLINE) refreshOnlineContent()
+    }
+
+    fun refreshOnlineContent() {
+        if (_uiState.value.onlineLoading) return
+        _uiState.value = _uiState.value.copy(onlineLoading = true, onlineError = null)
+        viewModelScope.launch(Dispatchers.IO) {
+            val session = museApplication.neteaseSessionStore.session.value
+            val userId = session?.userId?.takeIf { it > 0L }
+            val homeRequest = async { museApplication.neteaseClient.home() }
+            val profileRequest = userId?.let { id ->
+                async { museApplication.neteaseClient.userDetail(id) }
+            }
+            val playlistsRequest = userId?.let { id ->
+                async { museApplication.neteaseClient.userPlaylists(id) }
+            }
+            val likedSongsRequest = userId?.let { id ->
+                async { museApplication.neteaseClient.likedSongs(id) }
+            }
+            val recentSongsRequest = userId?.let {
+                async { museApplication.neteaseClient.recentSongs() }
+            }
+            val home = homeRequest.await()
+            val profile = profileRequest?.await()
+            val playlists = playlistsRequest?.await()
+            val likedSongs = likedSongsRequest?.await()
+            val recentSongs = recentSongsRequest?.await()
+            withContext(Dispatchers.Main) {
+                val previous = _uiState.value
+                val homeContent = home.getOrNull()
+                val profileContent = profile?.getOrNull()
+                val playlistContent = playlists?.getOrNull()
+                val likedContent = likedSongs?.getOrNull()
+                val recentContent = recentSongs?.getOrNull()
+                val firstFailure = listOfNotNull(
+                    home.exceptionOrNull(),
+                    playlists?.exceptionOrNull(),
+                    likedSongs?.exceptionOrNull(),
+                    recentSongs?.exceptionOrNull()
+                ).firstOrNull()
+                val currentUserId = museApplication.neteaseSessionStore.session.value
+                    ?.userId
+                    ?.takeIf { it > 0L }
+                _uiState.value = _uiState.value.copy(
+                    onlineHome = homeContent ?: previous.onlineHome,
+                    // A failed profile refresh keeps the last usable details;
+                    // an account switch/logout never lets an in-flight result
+                    // restore the previous account's identity.
+                    onlineProfileDetails = if (currentUserId == userId && userId != null) {
+                        profileContent ?: previous.onlineProfileDetails?.takeIf { it.userId == userId }
+                    } else {
+                        null
+                    },
+                    onlinePlaylists = if (userId == null) emptyList() else playlistContent ?: previous.onlinePlaylists,
+                    onlineLikedSongs = if (userId == null) emptyList() else likedContent ?: previous.onlineLikedSongs,
+                    onlineRecentSongs = if (userId == null) emptyList() else recentContent ?: previous.onlineRecentSongs,
+                    onlineLoading = false,
+                    onlineError = when {
+                        homeContent == null && previous.onlineHome == null ->
+                            home.exceptionOrNull()?.message ?: "Unable to load NetEase recommendations"
+                        userId != null && playlistContent == null && likedContent == null && recentContent == null &&
+                            previous.onlinePlaylists.isEmpty() && previous.onlineLikedSongs.isEmpty() && previous.onlineRecentSongs.isEmpty() ->
+                            firstFailure?.message ?: "Unable to load your NetEase library"
+                        else -> null
+                    }
+                )
+            }
+        }
+    }
+
+    fun acceptNeteaseCookie(cookie: String, onResult: (Result<NeteaseSession>) -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val normalized = com.caipan.music.data.NeteaseSessionStore.normalizeCookie(cookie)
+            val result = if (!com.caipan.music.data.NeteaseSessionStore.containsMusicU(normalized)) {
+                Result.failure(IllegalArgumentException("NetEase login cookie is missing MUSIC_U"))
+            } else com.caipan.music.online.NeteaseOnlineClient(cookieProvider = { normalized }).account().map { account ->
+                NeteaseSession(normalized, account.userId, account.nickname, account.avatarUrl)
+            }
+            result.onSuccess { museApplication.neteaseSessionStore.save(it) }
+            withContext(Dispatchers.Main) { onResult(result) }
+        }
+    }
+
+    fun logoutNetease() {
+        museApplication.neteaseSessionStore.clear()
+        neteaseCommentsJob?.cancel()
+        neteaseCommentsLoadMoreJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            neteaseSession = null,
+            onlineProfileDetails = null,
+            onlinePlaylists = emptyList(),
+            onlineLikedSongs = emptyList(),
+            onlineRecentSongs = emptyList(),
+            neteaseCommentsSongId = null,
+            neteaseHotComments = emptyList(),
+            neteaseLatestComments = emptyList(),
+            neteaseCommentsTotal = 0,
+            neteaseCommentsHasMore = false,
+            neteaseCommentsNextOffset = 0,
+            neteaseCommentsNextBeforeTime = 0L,
+            neteaseCommentsInitialLoading = false,
+            neteaseCommentsRefreshing = false,
+            neteaseCommentsLoadingMore = false,
+            neteaseCommentsError = null
+        )
+    }
+
+    fun loadOnlinePlaylistDetail(id: Long) {
+        _uiState.value = _uiState.value.copy(onlineLoading = true, onlineError = null, onlinePlaylistDetail = null)
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = museApplication.neteaseClient.playlistDetail(id)
+            withContext(Dispatchers.Main) {
+                _uiState.value = _uiState.value.copy(
+                    onlineLoading = false,
+                    onlinePlaylistDetail = result.getOrNull(),
+                    onlineError = result.exceptionOrNull()?.message
+                )
+            }
+        }
+    }
+
+    fun clearOnlinePlaylistDetail() {
+        _uiState.value = _uiState.value.copy(onlinePlaylistDetail = null, onlineLoading = false, onlineError = null)
+    }
+
+    /**
+     * Loads the first page of NetEase comments for the supplied remote song.  This is deliberately
+     * separate from player settings so a comment gesture never shares a recognizer or state with
+     * the playback menu.
+     */
+    fun loadNeteaseComments(songId: Long, refresh: Boolean = false) {
+        if (songId <= 0L) return
+        val previous = _uiState.value
+        val sameSong = previous.neteaseCommentsSongId == songId
+        if (!refresh && sameSong && (
+                previous.neteaseCommentsInitialLoading ||
+                    previous.neteaseHotComments.isNotEmpty() ||
+                    previous.neteaseLatestComments.isNotEmpty()
+                )
+        ) return
+
+        neteaseCommentsJob?.cancel()
+        neteaseCommentsLoadMoreJob?.cancel()
+        _uiState.value = previous.copy(
+            neteaseCommentsSongId = songId,
+            neteaseHotComments = if (sameSong && refresh) previous.neteaseHotComments else emptyList(),
+            neteaseLatestComments = if (sameSong && refresh) previous.neteaseLatestComments else emptyList(),
+            neteaseCommentsTotal = if (sameSong && refresh) previous.neteaseCommentsTotal else 0,
+            neteaseCommentsHasMore = false,
+            neteaseCommentsNextOffset = 0,
+            neteaseCommentsNextBeforeTime = 0L,
+            neteaseCommentsInitialLoading = !sameSong || !refresh,
+            neteaseCommentsRefreshing = sameSong && refresh,
+            neteaseCommentsLoadingMore = false,
+            neteaseCommentsError = null
+        )
+        neteaseCommentsJob = viewModelScope.launch(Dispatchers.IO) {
+            val result = museApplication.neteaseClient.songComments(songId)
+            withContext(Dispatchers.Main) {
+                val current = _uiState.value
+                if (current.neteaseCommentsSongId != songId) return@withContext
+                val page = result.getOrNull()
+                _uiState.value = current.copy(
+                    neteaseHotComments = page?.hotComments ?: current.neteaseHotComments,
+                    neteaseLatestComments = page?.recentComments ?: current.neteaseLatestComments,
+                    neteaseCommentsTotal = page?.totalCount ?: current.neteaseCommentsTotal,
+                    neteaseCommentsHasMore = page?.hasMore ?: false,
+                    neteaseCommentsNextOffset = page?.nextOffset ?: 0,
+                    neteaseCommentsNextBeforeTime = page?.nextBeforeTime ?: 0L,
+                    neteaseCommentsInitialLoading = false,
+                    neteaseCommentsRefreshing = false,
+                    neteaseCommentsLoadingMore = false,
+                    neteaseCommentsError = result.exceptionOrNull()?.message
+                )
+            }
+        }
+    }
+
+    fun loadMoreNeteaseComments() {
+        val current = _uiState.value
+        val songId = current.neteaseCommentsSongId ?: return
+        if (!current.neteaseCommentsHasMore || current.neteaseCommentsLoadingMore ||
+            current.neteaseCommentsInitialLoading || current.neteaseCommentsRefreshing
+        ) return
+
+        _uiState.value = current.copy(neteaseCommentsLoadingMore = true, neteaseCommentsError = null)
+        neteaseCommentsLoadMoreJob?.cancel()
+        neteaseCommentsLoadMoreJob = viewModelScope.launch(Dispatchers.IO) {
+            val result = museApplication.neteaseClient.songComments(
+                songId = songId,
+                offset = current.neteaseCommentsNextOffset,
+                beforeTime = current.neteaseCommentsNextBeforeTime
+            )
+            withContext(Dispatchers.Main) {
+                val latest = _uiState.value
+                if (latest.neteaseCommentsSongId != songId) return@withContext
+                val page = result.getOrNull()
+                val merged = if (page != null) {
+                    (latest.neteaseLatestComments + page.recentComments).distinctBy(NeteaseComment::id)
+                } else latest.neteaseLatestComments
+                _uiState.value = latest.copy(
+                    neteaseLatestComments = merged,
+                    neteaseCommentsTotal = page?.totalCount ?: latest.neteaseCommentsTotal,
+                    neteaseCommentsHasMore = page?.hasMore ?: latest.neteaseCommentsHasMore,
+                    neteaseCommentsNextOffset = page?.nextOffset ?: latest.neteaseCommentsNextOffset,
+                    neteaseCommentsNextBeforeTime = page?.nextBeforeTime ?: latest.neteaseCommentsNextBeforeTime,
+                    neteaseCommentsLoadingMore = false,
+                    neteaseCommentsError = result.exceptionOrNull()?.message
+                )
+            }
+        }
+    }
+
+    suspend fun searchOnlineTracks(query: String, sourceId: String): Result<OnlineSearchResult> {
+        val catalog = onlineCatalogs.firstOrNull { it.sourceId == sourceId } ?: onlineCatalog
+        return catalog.search(query).map { tracks ->
+            OnlineSearchResult(sourceLabel = catalog.displayName, tracks = tracks)
+        }.onFailure { error ->
+            runCatching {
+                val logFile = java.io.File(getApplication<Application>().filesDir, "search_errors.log")
+                val stamp = java.text.SimpleDateFormat(
+                    "yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()
+                ).format(java.util.Date())
+                logFile.appendText(
+                    "[$stamp] v${com.caipan.music.BuildConfig.VERSION_NAME} [$sourceId] \"$query\" -> ${error.toString()}\n"
+                )
+            }
+        }
+    }
+
+    fun importOnlineSource(url: String) {
+        if (_uiState.value.onlineSourceImporting) return
+        _uiState.value = _uiState.value.copy(onlineSourceImporting = true, onlineSourceMessage = null)
+        viewModelScope.launch {
+            val result = onlineSourceManager.importFromUrl(url.trim())
+            _uiState.value = _uiState.value.copy(
+                onlineSourceImporting = false,
+                onlineSources = onlineSourceManager.listSources(),
+                onlineSourceMessage = result.fold(
+                    onSuccess = { source ->
+                        "已导入 ${source.name}（SHA-256 ${source.sha256.take(12)}…），请确认来源后启用"
+                    },
+                    onFailure = { error -> "导入失败：${error.message ?: "无法下载脚本"}" }
+                )
+            )
+        }
+    }
+
+    fun importOnlineSourceFromFile(uri: Uri, fileName: String) {
+        if (_uiState.value.onlineSourceImporting) return
+        _uiState.value = _uiState.value.copy(onlineSourceImporting = true, onlineSourceMessage = null)
+        viewModelScope.launch {
+            val result = runCatching {
+                val script = getApplication<Application>().contentResolver
+                    .openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+                    ?: throw IOException("无法读取文件")
+                val name = fileName.substringBeforeLast('.').ifBlank { "本地音源" }
+                onlineSourceManager.importFromText(name, script).getOrThrow()
+            }
+            _uiState.value = _uiState.value.copy(
+                onlineSourceImporting = false,
+                onlineSources = onlineSourceManager.listSources(),
+                onlineSourceMessage = result.fold(
+                    onSuccess = { source ->
+                        "已导入 ${source.name}（SHA-256 ${source.sha256.take(12)}…），请确认来源后启用"
+                    },
+                    onFailure = { error -> "导入失败：${error.message ?: "无法读取脚本"}" }
+                )
+            )
+        }
+    }
+
+    fun setOnlineSourceEnabled(id: String, enabled: Boolean) {
+        viewModelScope.launch {
+            val result = onlineSourceManager.setEnabled(id, enabled)
+            _uiState.value = _uiState.value.copy(
+                onlineSources = onlineSourceManager.listSources(),
+                onlineSourceMessage = result.fold(
+                    onSuccess = { if (enabled) "已启用 ${it.name}" else "已停用 ${it.name}" },
+                    onFailure = { "启用失败：${it.message ?: "脚本不兼容"}" }
+                )
+            )
+        }
+    }
+
+    fun deleteOnlineSource(id: String) {
+        viewModelScope.launch {
+            val result = onlineSourceManager.delete(id)
+            _uiState.value = _uiState.value.copy(
+                onlineSources = onlineSourceManager.listSources(),
+                onlineSourceMessage = result.fold(
+                    onSuccess = { "已删除在线音源" },
+                    onFailure = { "删除失败：${it.message ?: "无法删除脚本"}" }
+                )
+            )
+        }
+    }
+
+    fun playOnlineTracks(tracks: List<OnlineTrack>, selected: OnlineTrack) {
+        val uniqueTracks = tracks.distinctBy(OnlineTrack::stableId)
+        val songs = uniqueTracks.map(OnlineTrack::toSong)
+        val index = uniqueTracks.indexOfFirst { it.stableId == selected.stableId }
+        if (songs.isNotEmpty() && index in songs.indices) {
+            player.setQueue(songs, index)
+            _uiState.value = _uiState.value.copy(showPlayer = true)
+        }
+    }
+
+    fun playOnlinePodcast(podcast: NeteaseHomePodcast) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val tracks = museApplication.neteaseClient.podcastPrograms(podcast.id).getOrNull().orEmpty()
+            val first = tracks.firstOrNull() ?: return@launch
+            withContext(Dispatchers.Main) { playOnlineTracks(tracks, first) }
+        }
     }
 
     fun setPluginEnabled(id: String, enabled: Boolean) {
@@ -373,7 +816,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                     val argb = 0xff000000L or raw.drop(1).toLong(16)
                     setBackgroundColor(Color(argb.toULong()))
                 }
-                if (payload.has("uiStyle")) setUiStyle(UiStyle.valueOf(payload.getString("uiStyle")))
+                if (payload.has("uiStyle")) setUiStyle(resolveUiStyle(payload.getString("uiStyle")))
                 if (payload.has("playerBgMode")) setPlayerBgMode(
                     com.caipan.music.player.PlayerBgMode.valueOf(payload.getString("playerBgMode")))
                 JSONObject().put("applied", true)
@@ -538,6 +981,50 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** 保存裁剪后的头像（JPEG 压缩落盘）。 */
+    fun saveProfileAvatar(bitmap: Bitmap) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val avatarDir = File(getApplication<Application>().filesDir, "profile_avatars").apply { mkdirs() }
+            val target = File(avatarDir, "avatar_${UUID.randomUUID()}.jpg")
+            FileOutputStream(target).use { output ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)
+            }
+            withContext(Dispatchers.Main) {
+                prefs().edit().putString("profile_avatar", target.absolutePath).apply()
+                _uiState.value = _uiState.value.copy(profileAvatar = Uri.fromFile(target))
+            }
+        }
+    }
+
+    /**
+     * 从 MChat 头像 URL 下载并保存为本地档案头像。
+     * 下载失败时通过 [onResult] 回调 false（不影响昵称同步与登录态）。
+     */
+    fun saveProfileAvatarUrl(url: String, onResult: ((Boolean) -> Unit)? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val avatarFile = runCatching {
+                val client = OkHttpClient()
+                client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                    if (!response.isSuccessful) return@runCatching null
+                    val bytes = response.body?.bytes() ?: return@runCatching null
+                    val avatarDir = File(getApplication<Application>().filesDir, "profile_avatars").apply { mkdirs() }
+                    val target = File(avatarDir, "avatar_${UUID.randomUUID()}.jpg")
+                    target.writeBytes(bytes)
+                    target
+                }
+            }.getOrNull()
+            if (avatarFile == null) {
+                withContext(Dispatchers.Main) { onResult?.invoke(false) }
+                return@launch
+            }
+            withContext(Dispatchers.Main) {
+                prefs().edit().putString("profile_avatar", avatarFile.absolutePath).apply()
+                _uiState.value = _uiState.value.copy(profileAvatar = Uri.fromFile(avatarFile))
+                onResult?.invoke(true)
+            }
+        }
+    }
+
     fun saveWallpaper(uri: Uri) {
         wallpaperSaveJob?.cancel()
         wallpaperSaveJob = viewModelScope.launch {
@@ -571,8 +1058,56 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 if (destFile.exists()) {
                     val oldPath = prefs().getString("wallpaper_path", null)
                     val fileUri = Uri.fromFile(destFile)
-                    _uiState.value = _uiState.value.copy(wallpaperUri = fileUri)
+                    // 背景二选一：设置图片壁纸时清除视频背景
+                    val oldVideoPath = prefs().getString("video_path", null)
+                    _uiState.value = _uiState.value.copy(wallpaperUri = fileUri, videoUri = null)
                     prefs().edit().putString("wallpaper_path", destFile.absolutePath).apply()
+                    if (oldVideoPath != null) {
+                        File(oldVideoPath).delete()
+                        prefs().edit().remove("video_path").apply()
+                    }
+                    if (oldPath != null && oldPath != destFile.absolutePath) File(oldPath).delete()
+                    Log.d("Muse", "Wallpaper saved: ${destFile.absolutePath}")
+                }
+            } catch (e: Exception) {
+                Log.e("Muse", "Failed to save wallpaper", e)
+            }
+        }
+    }
+
+    /** 保存裁剪后的壁纸（JPEG 压缩落盘）。 */
+    fun saveWallpaper(bitmap: Bitmap) {
+        wallpaperSaveJob?.cancel()
+        wallpaperSaveJob = viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            try {
+                val destDir = File(ctx.filesDir, "wallpapers").apply { mkdirs() }
+                val destFile = File(destDir, "wallpaper_${UUID.randomUUID()}.jpg")
+                val tempFile = File(destDir, "${destFile.name}.tmp")
+                withContext(Dispatchers.IO) {
+                    try {
+                        FileOutputStream(tempFile).use { output ->
+                            check(bitmap.compress(Bitmap.CompressFormat.JPEG, 85, output)) {
+                                "Unable to encode wallpaper image"
+                            }
+                        }
+                        check(tempFile.renameTo(destFile)) { "Unable to finalize wallpaper image" }
+                    } catch (error: Throwable) {
+                        tempFile.delete()
+                        throw error
+                    }
+                }
+                if (destFile.exists()) {
+                    val oldPath = prefs().getString("wallpaper_path", null)
+                    val fileUri = Uri.fromFile(destFile)
+                    // 背景二选一：设置图片壁纸时清除视频背景
+                    val oldVideoPath = prefs().getString("video_path", null)
+                    _uiState.value = _uiState.value.copy(wallpaperUri = fileUri, videoUri = null)
+                    prefs().edit().putString("wallpaper_path", destFile.absolutePath).apply()
+                    if (oldVideoPath != null) {
+                        File(oldVideoPath).delete()
+                        prefs().edit().remove("video_path").apply()
+                    }
                     if (oldPath != null && oldPath != destFile.absolutePath) File(oldPath).delete()
                     Log.d("Muse", "Wallpaper saved: ${destFile.absolutePath}")
                 }
@@ -603,8 +1138,14 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 if (destFile.exists()) {
                     val fileUri = Uri.fromFile(destFile)
-                    _uiState.value = _uiState.value.copy(videoUri = fileUri)
+                    // 背景二选一：设置视频背景时清除图片壁纸
+                    val oldWallpaperPath = prefs().getString("wallpaper_path", null)
+                    _uiState.value = _uiState.value.copy(videoUri = fileUri, wallpaperUri = null)
                     prefs().edit().putString("video_path", destFile.absolutePath).apply()
+                    if (oldWallpaperPath != null) {
+                        File(oldWallpaperPath).delete()
+                        prefs().edit().remove("wallpaper_path").apply()
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("Muse", "Failed to save video", e)
@@ -714,6 +1255,29 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         prefs().edit().putString("player_bg_mode", mode.name).apply()
     }
     suspend fun loadLyrics(songId: Long) = com.caipan.music.player.LyricsManager.loadLyrics(getApplication(), songId)
+
+    suspend fun loadLyrics(song: Song): List<LyricLine> {
+        if (song.isOnline) {
+            val lrc = try {
+                val track = song.toOnlineTrack()
+                val official = if (track.source == com.caipan.music.online.NeteaseCatalog.NETEASE_SOURCE) {
+                    museApplication.neteaseClient.lyrics(track).getOrNull()
+                } else null
+                official
+                    ?: onlineCatalogs.firstOrNull { it.sourceId == track.source && it.supports(MusicCapability.Lyrics) }
+                        ?.resolveLyrics(track)
+                        ?.getOrNull()
+                    ?.takeIf(String::isNotBlank)
+                    ?: onlineSourceManager.resolveLyrics(track).getOrNull()
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                null
+            }
+            return if (lrc.isNullOrBlank()) emptyList() else com.caipan.music.player.LyricsManager.parseLrc(lrc)
+        }
+        return loadLyrics(song.id)
+    }
     fun setSearchQuery(query: String) { _uiState.value = _uiState.value.copy(searchQuery = query) }
     fun refresh() = loadSongs()
 
@@ -721,8 +1285,12 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
     fun getAllPlaylists(): List<Playlist> = playlistManager.getAll()
 
     suspend fun getPlaylistSongs(playlistId: String): List<Song> {
-        val ids = playlistManager.getPlaylistSongs(playlistId)
-        return if (ids.isEmpty()) emptyList() else repository.getSongsByIds(ids)
+        val playlist = playlistManager.getAll().find { it.id == playlistId } ?: return emptyList()
+        if (playlist.songIds.isEmpty()) return emptyList()
+        val local = repository.getSongsByIds(playlist.songIds)
+        val online = playlist.songPayloads.values.mapNotNull { Song.fromPlaylistPayload(it) }
+        val byId = local.associateBy { it.id } + online.associateBy { it.id }
+        return playlist.songIds.mapNotNull { byId[it] }
     }
 
     fun deletePlaylist(id: String) { playlistManager.delete(id) }
@@ -752,8 +1320,46 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** 保存裁剪后的歌单封面（JPEG 压缩落盘）。 */
+    fun setPlaylistCover(playlistId: String, bitmap: Bitmap, onSaved: (Playlist) -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val ctx = getApplication<Application>()
+                val destDir = File(ctx.filesDir, "playlist_covers").apply { mkdirs() }
+                val destFile = File(destDir, "cover_${playlistId}_${UUID.randomUUID()}.jpg")
+                withContext(Dispatchers.IO) {
+                    FileOutputStream(destFile).use { output ->
+                        check(bitmap.compress(Bitmap.CompressFormat.JPEG, 88, output))
+                    }
+                }
+                if (destFile.exists()) {
+                    playlistManager.setCover(playlistId, Uri.fromFile(destFile).toString())
+                    playlistManager.getAll().find { it.id == playlistId }?.let(onSaved)
+                }
+            } catch (e: Exception) {
+                Log.e("Muse", "Failed to save playlist cover", e)
+            }
+        }
+    }
+
     fun removeSongFromPlaylist(playlistId: String, songId: Long) {
         playlistManager.removeSongs(playlistId, listOf(songId))
+    }
+
+    /** 双击封面收藏/取消收藏；首次收藏时自动创建收藏歌单。返回 true 表示已收藏。 */
+    fun toggleFavorite(song: Song): Boolean {
+        val playlists = playlistManager.getAll()
+        val existing = playlists.firstOrNull { it.id == FAVORITES_PLAYLIST_ID }
+            ?: playlists.firstOrNull { it.name == FAVORITES_PLAYLIST_NAME }
+        val favorites = existing ?: Playlist(FAVORITES_PLAYLIST_ID, FAVORITES_PLAYLIST_NAME)
+            .also { playlistManager.save(it) }
+        val isFavorite = favorites.songIds.contains(song.id)
+        if (isFavorite) {
+            playlistManager.removeSongs(favorites.id, listOf(song.id))
+        } else {
+            playlistManager.addSongsWithPayloads(favorites.id, mapOf(song.id to song.toPlaylistPayload()))
+        }
+        return !isFavorite
     }
 
     fun playPlaylist(playlistId: String, startIndex: Int = 0) {
@@ -762,6 +1368,160 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
             if (songs.isNotEmpty() && startIndex in songs.indices) {
                 player.setQueue(songs, startIndex)
                 _uiState.value = _uiState.value.copy(showPlayer = true)
+            }
+        }
+    }
+
+    /** 随机播放歌单：开启随机模式后从队列头开始播放。 */
+    fun playPlaylistShuffled(playlistId: String) {
+        viewModelScope.launch {
+            val songs = getPlaylistSongs(playlistId)
+            if (songs.isNotEmpty()) {
+                player.setShuffle(true)
+                player.setQueue(songs, 0)
+                _uiState.value = _uiState.value.copy(showPlayer = true)
+            }
+        }
+    }
+
+    /** 顺序播放歌单：关闭随机模式后从队列头开始播放。 */
+    fun playPlaylistSequential(playlistId: String) {
+        viewModelScope.launch {
+            val songs = getPlaylistSongs(playlistId)
+            if (songs.isNotEmpty()) {
+                player.setShuffle(false)
+                player.setQueue(songs, 0)
+                _uiState.value = _uiState.value.copy(showPlayer = true)
+            }
+        }
+    }
+
+    // ── Playback settings ──
+    fun updatePlaybackSettings(transform: (com.caipan.music.player.PlaybackSettings) -> com.caipan.music.player.PlaybackSettings) {
+        val old = playbackSettingsStore.state.value
+        val new = playbackSettingsStore.update(transform)
+        val current = playbackSettingsStore.state.value
+        if (current.playbackSpeed != old.playbackSpeed || current.preservePitch != old.preservePitch) {
+            player.setPlaybackSpeed(current.playbackSpeed)
+        }
+        if (current.bassBoostEnabled != old.bassBoostEnabled || current.bassBoostStrength != old.bassBoostStrength) {
+            audioEffectsManager.setBassBoost(current.bassBoostEnabled, current.bassBoostStrength)
+        }
+        if (current.virtualizerEnabled != old.virtualizerEnabled || current.virtualizerStrength != old.virtualizerStrength) {
+            audioEffectsManager.setVirtualizer(current.virtualizerEnabled, current.virtualizerStrength)
+        }
+        if (current.reverbPreset != old.reverbPreset) {
+            audioEffectsManager.setReverb(current.reverbPreset)
+        }
+        if (current.preferredQuality != old.preferredQuality) {
+            onlinePreferences.preferredQuality = current.preferredQuality
+            // 在线歌曲按新音质重新请求播放（重新 resolve URL）
+            if (player.uiState.value.currentSong?.isOnline == true) {
+                val requested = current.preferredQuality
+                player.replay()
+                viewModelScope.launch {
+                    // 轮询等解析完成（最多 5 秒），比较实际音质是否降级
+                    var actual: String? = null
+                    val start = System.currentTimeMillis()
+                    while (System.currentTimeMillis() - start < 5_000L) {
+                        actual = player.uiState.value.quality
+                        if (actual != null) break
+                        delay(200L)
+                    }
+                    if (actual != null && qualityRank(actual) < qualityRank(requested.lxKey)) {
+                        _uiState.value = _uiState.value.copy(
+                            onlineSourceMessage = "当前音质不可用，已降至 ${qualityLabelText(actual)}"
+                        )
+                    }
+                }
+            }
+        }
+        if (current.sleepTimerMinutes != old.sleepTimerMinutes || current.sleepTimerEndOfSong != old.sleepTimerEndOfSong) {
+            startSleepTimer()
+        }
+        _uiState.value = _uiState.value.copy(playbackSettings = current)
+    }
+
+    private fun qualityRank(q: String): Int = when (q.lowercase().trim()) {
+        "flac24bit", "hires", "hi-res", "hi_res" -> 4
+        "flac", "lossless" -> 3
+        "320k", "320", "high" -> 2
+        "128k", "128", "standard" -> 1
+        else -> 0
+    }
+
+    private fun qualityLabelText(q: String): String = when (q.lowercase().trim()) {
+        "flac24bit", "hires", "hi-res", "hi_res" -> "Hi-Res"
+        "flac", "lossless" -> "无损"
+        "320k", "320", "high" -> "高品"
+        "128k", "128", "standard" -> "标准"
+        else -> q
+    }
+
+    // ── Smart playlists ──
+    fun getRecentSongs(limit: Int = 100): List<Song> {
+        val ids = playHistoryManager.recentSongs(limit)
+        val byId = _uiState.value.songs.associateBy { it.id }
+        return ids.mapNotNull { byId[it] }
+    }
+
+    fun getMostPlayedSongs(limit: Int = 100): List<Song> {
+        val ids = playHistoryManager.mostPlayedSongs(limit)
+        val byId = _uiState.value.songs.associateBy { it.id }
+        return ids.mapNotNull { byId[it] }
+    }
+
+    fun getSongPlayCount(songId: Long): Int = playHistoryManager.playCount(songId)
+
+    // ── Sleep timer ──
+    private var sleepTimerJob: Job? = null
+    private var sleepTimerEndTime: Long = 0
+
+    private fun startSleepTimer() {
+        sleepTimerJob?.cancel()
+        val settings = playbackSettingsStore.state.value
+        if (!settings.sleepTimerActive) {
+            sleepTimerEndTime = 0
+            _uiState.value = _uiState.value.copy(sleepTimerRemainingMs = 0)
+            return
+        }
+        if (settings.sleepTimerEndOfSong) {
+            sleepTimerEndTime = 0
+            _uiState.value = _uiState.value.copy(sleepTimerRemainingMs = 0)
+            return
+        }
+        sleepTimerEndTime = System.currentTimeMillis() + settings.sleepTimerMinutes * 60_000L
+        sleepTimerJob = viewModelScope.launch {
+            while (true) {
+                val remaining = sleepTimerEndTime - System.currentTimeMillis()
+                if (remaining <= 0) {
+                    if (player.uiState.value.isPlaying) player.togglePlay()
+                    playbackSettingsStore.clearSleepTimer()
+                    _uiState.value = _uiState.value.copy(
+                        sleepTimerRemainingMs = 0,
+                        playbackSettings = playbackSettingsStore.state.value
+                    )
+                    sleepTimerEndTime = 0
+                    break
+                }
+                _uiState.value = _uiState.value.copy(sleepTimerRemainingMs = remaining)
+                delay(1000L)
+            }
+        }
+    }
+
+    private fun checkSleepTimerEndOfSong() {
+        val settings = playbackSettingsStore.state.value
+        if (settings.sleepTimerEndOfSong) {
+            val state = player.uiState.value
+            val remaining = state.durationMs - state.progressMs
+            if (remaining in 1..2000L) {
+                if (player.uiState.value.isPlaying) player.togglePlay()
+                playbackSettingsStore.clearSleepTimer()
+                _uiState.value = _uiState.value.copy(
+                    sleepTimerRemainingMs = 0,
+                    playbackSettings = playbackSettingsStore.state.value
+                )
             }
         }
     }
@@ -905,18 +1665,25 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
                         pendingListenMs = 0
                     }
                 }
+                // Record play history when song changes
+                if (songId != null && songId != lastSongId) {
+                    playHistoryManager.record(songId)
+                }
                 lastSongId = songId
                 lastProgress = state.progressMs
                 _uiState.value = _uiState.value.copy(playerState = state)
-                // Attach EQ when audio session is ready
+                // Attach EQ and audio effects when audio session is ready
                 if (state.audioSessionId != 0 && state.audioSessionId != lastSessionId) {
                     lastSessionId = state.audioSessionId
                     eqManager.attach(state.audioSessionId)
+                    audioEffectsManager.attach(state.audioSessionId)
                 }
+                // Check sleep timer
+                checkSleepTimerEndOfSong()
                 delay(250)
             }
         }
     }
 
-    override fun onCleared() { super.onCleared(); eqManager.release() }
+    override fun onCleared() { super.onCleared(); eqManager.release(); audioEffectsManager.release() }
 }

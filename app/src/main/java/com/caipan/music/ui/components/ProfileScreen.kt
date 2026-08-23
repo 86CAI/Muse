@@ -1,6 +1,7 @@
 package com.caipan.music.ui.components
 
 import android.net.Uri
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -22,19 +23,30 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Dp
 import coil.compose.AsyncImage
+import com.caipan.music.data.OAuthSession
+import com.caipan.music.R
 import com.caipan.music.model.Song
 import com.kyant.backdrop.Backdrop
 
 @Composable
 fun ProfileScreen(
-    name: String, avatar: Uri?, listeningTimeMs: Long, completedPlays: Int, repeatCount: Int,
+    name: String, avatar: Any?, listeningTimeMs: Long, completedPlays: Int, repeatCount: Int,
     songCount: Int, repeatSongs: List<Pair<Song, Int>>, accent: Color, isLightTheme: Boolean,
-    backdrop: Backdrop?, onNameChange: (String) -> Unit, onPickAvatar: () -> Unit, onDismiss: () -> Unit
+    backdrop: Backdrop?, onNameChange: (String) -> Unit, onPickAvatar: () -> Unit, onDismiss: () -> Unit,
+    oauthSession: OAuthSession? = null,
+    onOAuthLogin: () -> Unit = {},
+    onOAuthLogout: () -> Unit = {},
+    identityLabel: String = "LOCAL LISTENER · MUSE",
+    allowIdentityEditing: Boolean = true,
+    embedded: Boolean = false,
+    bottomContentPadding: Dp = 40.dp
 ) {
     var editing by remember { mutableStateOf(false) }
     var draft by remember(name) { mutableStateOf(name) }
@@ -43,16 +55,16 @@ fun ProfileScreen(
     val glassTint = if (isLightTheme) Color.White.copy(.62f)
         else MaterialTheme.colorScheme.surfaceContainerHighest.copy(.54f)
 
-    FullScreenGlassRoute(backdrop, isLightTheme) {
+    val profileContent: @Composable () -> Unit = {
         Box(Modifier.fillMaxSize()) {
             AmbientGlow(Modifier.size(360.dp).offset(x = 120.dp, y = (-110).dp), accent.copy(.30f))
             AmbientGlow(Modifier.size(280.dp).offset(x = (-120).dp, y = 430.dp), Color(0xFF7657FF).copy(.18f))
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                    .statusBarsPadding().padding(bottom = 40.dp)
+                    .statusBarsPadding().padding(bottom = bottomContentPadding)
             ) {
                 Row(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDismiss) { Icon(Icons.Default.ArrowBack, "返回") }
+                    MuseIconButton(onClick = onDismiss) { Icon(painterResource(R.drawable.ic_apple_arrow_left), "返回") }
                     Spacer(Modifier.weight(1f))
                     Text("MUSE PROFILE", color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                         letterSpacing = 1.8.sp, modifier = Modifier.padding(end = 18.dp))
@@ -74,19 +86,21 @@ fun ProfileScreen(
                                 Box(
                                     Modifier.size(92.dp).clip(CircleShape)
                                         .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                        .clickable(onClick = onPickAvatar), contentAlignment = Alignment.Center
+                                        .clickable(enabled = allowIdentityEditing, onClick = onPickAvatar), contentAlignment = Alignment.Center
                                 ) {
                                     if (avatar != null) AsyncImage(avatar, "头像", Modifier.matchParentSize(), contentScale = ContentScale.Crop)
-                                    else Icon(Icons.Default.Person, null, Modifier.size(48.dp), tint = accent)
-                                    Box(
-                                        Modifier.align(Alignment.BottomEnd).size(29.dp).clip(CircleShape).background(accent),
-                                        contentAlignment = Alignment.Center
-                                    ) { Icon(Icons.Default.Edit, "更换头像", Modifier.size(15.dp), tint = Color.White) }
+                                    else Icon(painterResource(R.drawable.ic_apple_user), null, Modifier.size(48.dp), tint = accent)
+                                    if (allowIdentityEditing) {
+                                        Box(
+                                            Modifier.align(Alignment.BottomEnd).size(29.dp).clip(CircleShape).background(accent),
+                                            contentAlignment = Alignment.Center
+                                        ) { Icon(painterResource(R.drawable.ic_apple_edit), "更换头像", Modifier.size(15.dp), tint = Color.White) }
+                                    }
                                 }
                                 Column(Modifier.padding(start = 18.dp).weight(1f)) {
                                     Text(name, fontSize = 27.sp, fontWeight = FontWeight.Bold, maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis, modifier = Modifier.clickable { editing = true })
-                                    Text("LOCAL LISTENER · MUSE", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        overflow = TextOverflow.Ellipsis, modifier = Modifier.clickable(enabled = allowIdentityEditing) { editing = true })
+                                    Text(identityLabel, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontSize = 11.sp, letterSpacing = 1.sp, modifier = Modifier.padding(top = 4.dp))
                                 }
                             }
@@ -97,7 +111,7 @@ fun ProfileScreen(
                                     Text("把这段时间留给音乐", color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
                                 }
-                                Icon(Icons.Default.Headphones, null, tint = accent.copy(.78f), modifier = Modifier.size(30.dp))
+                                Icon(painterResource(R.drawable.ic_apple_headphones), null, tint = accent.copy(.78f), modifier = Modifier.size(30.dp))
                             }
                             Spacer(Modifier.height(16.dp))
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -111,13 +125,55 @@ fun ProfileScreen(
                             }
                         }
                     }
+                    // ── MChat 账号绑定 ──
+                    val mchatConnected = oauthSession?.isLoggedIn == true
+                    Box(
+                        Modifier.fillMaxWidth().padding(top = 16.dp).clip(RoundedCornerShape(24.dp))
+                            .museGlass(backdrop, RoundedCornerShape(24.dp), glassTint)
+                    ) {
+                        Box(Modifier.matchParentSize().background(Brush.linearGradient(
+                            listOf(accent.copy(.12f), Color.Transparent))))
+                        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(44.dp).clip(CircleShape).background(accent.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+                                Icon(
+                                    painterResource(R.drawable.ic_apple_user),
+                                    null, tint = accent, modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+                                Text(
+                                    if (mchatConnected) (oauthSession!!.nickname.takeIf { it.isNotBlank() } ?: "MChat 已连接")
+                                    else "MChat 账号",
+                                    fontWeight = FontWeight.SemiBold, fontSize = 15.sp
+                                )
+                                Text(
+                                    if (mchatConnected) "已授权 Muse 访问 MChat" else "登录后可跨设备同步偏好",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp
+                                )
+                            }
+                            if (mchatConnected) {
+                                TextButton(onClick = onOAuthLogout) {
+                                    Text("退出", color = accent, fontSize = 13.sp)
+                                }
+                            } else {
+                                Button(
+                                    onClick = onOAuthLogin,
+                                    shape = RoundedCornerShape(20.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White),
+                                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
+                                ) {
+                                    Text("登录", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                    }
                     if (repeatSongs.isNotEmpty()) {
                         Row(Modifier.fillMaxWidth().padding(top = 30.dp, bottom = 12.dp), verticalAlignment = Alignment.Bottom) {
                             Column(Modifier.weight(1f)) {
                                 Text("反复爱上的歌", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                                 Text("循环不是重复，是舍不得结束", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                             }
-                            Icon(Icons.Default.RepeatOne, null, tint = accent)
+                            Icon(painterResource(R.drawable.ic_apple_repeat), null, tint = accent)
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             repeatSongs.take(5).forEachIndexed { index, (song, count) ->
@@ -129,12 +185,13 @@ fun ProfileScreen(
             }
         }
     }
-    if (editing) AlertDialog(
+    if (embedded) profileContent() else FullScreenGlassRoute(backdrop, isLightTheme) { profileContent() }
+    if (editing && allowIdentityEditing) MuseAlertDialog(
         onDismissRequest = { editing = false },
         title = { DialogBlurEffect(); Text("给这份档案一个名字") },
         text = { OutlinedTextField(draft, { draft = it.take(24) }, singleLine = true) },
-        confirmButton = { TextButton({ onNameChange(draft); editing = false }) { Text("保存") } },
-        dismissButton = { TextButton({ editing = false }) { Text("取消") } },
+        confirmButton = { MuseTextButton({ onNameChange(draft); editing = false }) { Text("保存") } },
+        dismissButton = { MuseTextButton({ editing = false }) { Text("取消") } },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = .94f),
         tonalElevation = 8.dp, shape = RoundedCornerShape(24.dp)
     )

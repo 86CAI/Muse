@@ -35,6 +35,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import androidx.compose.ui.res.painterResource
+import com.caipan.music.R
 import com.caipan.music.plugin.PluginNetworkRequest
 import com.caipan.music.plugin.PluginWebUiSession
 import kotlinx.coroutines.launch
@@ -131,7 +133,7 @@ fun PluginWebUiScreen(
             Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "关闭", tint = foreground) }
+            MuseIconButton(onClick = onDismiss) { Icon(painterResource(R.drawable.ic_apple_x), "关闭", tint = foreground) }
             Text("插件 WebUI", color = foreground, fontSize = 18.sp)
         }
     }

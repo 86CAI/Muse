@@ -1,10 +1,11 @@
-﻿package com.caipan.music.ui.components
+package com.caipan.music.ui.components
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,10 +19,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.caipan.music.R
 import com.caipan.music.player.EqBand
 import com.caipan.music.plugin.BlurLocation
 import com.kyant.backdrop.Backdrop
@@ -89,8 +92,8 @@ fun EqualizerScreen(
             // ── Header ──
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.ArrowBack, if (isChinese) "返回" else "Back", tint = textPrimary, modifier = Modifier.size(24.dp))
+                MuseIconButton(onClick = onDismiss) {
+                    Icon(painterResource(R.drawable.ic_apple_arrow_left), if (isChinese) "返回" else "Back", tint = textPrimary, modifier = Modifier.size(24.dp))
                 }
                 Text(s.equalizer, color = textPrimary, style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f).padding(start = 8.dp))
@@ -105,22 +108,22 @@ fun EqualizerScreen(
             }
 
             // ── Action bar ──
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = false, onClick = { importLauncher.launch(arrayOf("text/plain", "*/*")) },
+                MuseFilterChip(selected = false, onClick = { importLauncher.launch(arrayOf("text/plain", "*/*")) },
                     label = { Text(s.import, fontSize = 11.sp) },
-                    leadingIcon = { Icon(Icons.Default.FileOpen, null, modifier = Modifier.size(14.dp)) })
-                FilterChip(selected = false, onClick = { showExportDialog = true },
+                    leadingIcon = { Icon(painterResource(R.drawable.ic_apple_file_text), null, modifier = Modifier.size(14.dp)) })
+                MuseFilterChip(selected = false, onClick = { showExportDialog = true },
                     label = { Text(s.export, fontSize = 11.sp) },
-                    leadingIcon = { Icon(Icons.Default.SaveAlt, null, modifier = Modifier.size(14.dp)) })
-                FilterChip(selected = false, onClick = { showSaveDialog = true },
+                    leadingIcon = { Icon(painterResource(R.drawable.ic_apple_download), null, modifier = Modifier.size(14.dp)) })
+                MuseFilterChip(selected = false, onClick = { showSaveDialog = true },
                     label = { Text(s.save, fontSize = 11.sp) },
-                    leadingIcon = { Icon(Icons.Default.BookmarkAdd, null, modifier = Modifier.size(14.dp)) })
-                FilterChip(selected = false, onClick = { showPresets = !showPresets },
+                    leadingIcon = { Icon(painterResource(R.drawable.ic_apple_bookmark), null, modifier = Modifier.size(14.dp)) })
+                MuseFilterChip(selected = false, onClick = { showPresets = !showPresets },
                     label = { Text(s.presets, fontSize = 11.sp) },
-                    leadingIcon = { Icon(Icons.Default.LibraryMusic, null, modifier = Modifier.size(14.dp)) })
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = onReset, modifier = Modifier.height(32.dp)) {
+                    leadingIcon = { Icon(painterResource(R.drawable.ic_apple_library), null, modifier = Modifier.size(14.dp)) })
+                Spacer(Modifier.width(10.dp))
+                MuseTextButton(onClick = onReset, modifier = Modifier.height(48.dp)) {
                     Text(s.reset, color = textSecondary, fontSize = 11.sp)
                 }
             }
@@ -145,11 +148,11 @@ fun EqualizerScreen(
                             Row(Modifier.fillMaxWidth().clickable { onLoadPreset(name); showPresets = false }
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.GraphicEq, null, tint = accentColor, modifier = Modifier.size(16.dp))
+                                Icon(painterResource(R.drawable.ic_apple_activity), null, tint = accentColor, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text(name, color = textPrimary, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                                IconButton(onClick = { onDeletePreset(name) }, modifier = Modifier.size(24.dp)) {
-                                    Icon(Icons.Default.Close, s.delete, tint = textSecondary, modifier = Modifier.size(14.dp))
+                                MuseIconButton(onClick = { onDeletePreset(name) }, modifier = Modifier.size(48.dp)) {
+                                    Icon(painterResource(R.drawable.ic_apple_x), s.delete, tint = textSecondary, modifier = Modifier.size(14.dp))
                                 }
                             }
                         }
@@ -203,25 +206,25 @@ fun EqualizerScreen(
 
     // ── Export Dialog ──
     if (showExportDialog) {
-        AlertDialog(onDismissRequest = { showExportDialog = false },
+        MuseAlertDialog(onDismissRequest = { showExportDialog = false },
             title = { DialogBlurEffect(); Text(s.exportPreset, color = textPrimary) },
             text = { OutlinedTextField(value = dialogName, onValueChange = { dialogName = it },
                 label = { Text(s.presetName) }, singleLine = true) },
-            confirmButton = { TextButton(onClick = { showExportDialog = false; exportLauncher.launch("${dialogName}.txt") })
+            confirmButton = { MuseTextButton(onClick = { showExportDialog = false; exportLauncher.launch("${dialogName}.txt") })
                 { Text(s.confirm, color = accentColor) } },
-            dismissButton = { TextButton(onClick = { showExportDialog = false }) { Text(s.cancel, color = textSecondary) } },
+            dismissButton = { MuseTextButton(onClick = { showExportDialog = false }) { Text(s.cancel, color = textSecondary) } },
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = .94f),
             tonalElevation = 8.dp, shape = RoundedCornerShape(24.dp))
     }
 
     if (showSaveDialog) {
-        AlertDialog(onDismissRequest = { showSaveDialog = false },
+        MuseAlertDialog(onDismissRequest = { showSaveDialog = false },
             title = { DialogBlurEffect(); Text(s.savePreset, color = textPrimary) },
             text = { OutlinedTextField(value = dialogName, onValueChange = { dialogName = it },
                 label = { Text(s.presetName) }, singleLine = true) },
-            confirmButton = { TextButton(onClick = { showSaveDialog = false; onSavePreset(dialogName) })
+            confirmButton = { MuseTextButton(onClick = { showSaveDialog = false; onSavePreset(dialogName) })
                 { Text(s.confirm, color = accentColor) } },
-            dismissButton = { TextButton(onClick = { showSaveDialog = false }) { Text(s.cancel, color = textSecondary) } },
+            dismissButton = { MuseTextButton(onClick = { showSaveDialog = false }) { Text(s.cancel, color = textSecondary) } },
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = .94f),
             tonalElevation = 8.dp, shape = RoundedCornerShape(24.dp))
     }
